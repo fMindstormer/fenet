@@ -12,7 +12,7 @@ from compile import N
 
 n = int(sys.argv[1]) if len(sys.argv) > 1 else 100
 dprs = [float(d) for d in (sys.argv[2].split(",") if len(sys.argv) > 2 else ["1"])]
-X, y, Xt, yt = T.load()
+_, _, (Xt, yt) = T.load()
 xt = T.batch_grid(Xt, range(n), None, aug=False)
 model = dict(np.load("model.npz"))
 net = T.Net(); net.p = {k: model[k] for k in ("K1", "b1", "K2", "b2", "K3", "b3", "W", "c")}

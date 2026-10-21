@@ -72,12 +72,22 @@ dark theme.
 | | |
 |---|---|
 | network | 196 → 192 → 96 → 10, 57,322 weights, clipped-linear activations, 8-bit |
-| MNIST test, pooled to 14 × 14 | 97.0 % |
-| MNIST test, skeletonized to one-cell strokes | 95.0 % |
-| emulator vs NumPy model | identical except ties, which the filter gives to the lower digit |
+| MNIST test, pooled to 14 × 14 | 96.6 % |
+| MNIST test, skeletonized to one-cell strokes | 94.9 % |
+| emulator vs NumPy model | the same answer for 9,993 of 10,000 test digits; the 7 others are near-ties, with the top two scores less than one 8-bit step apart |
 | Chromium vs NumPy model | the page prints the model's answer for 199 of 200 test digits at each of 8 zoom levels from 0.75 to 3, with GPU and with software raster (`logs_agreement.txt`). The odd one is a near-tie: Chromium's convolutions don't round exactly like the emulator |
 | page size | about 710 kB, all inline except the Google Fonts stylesheet |
 | time per painted cell | under 0.1 s in Chromium 156 on an Apple M4, GPU or software raster (`time_frames.py`, screenshot included) |
+
+MNIST's 60,000 training digits are split as published: 50,000 to train on and 10,000 for validation.
+Every choice made from results reads validation only: the saved epoch (`train_mlp.py`), the score scale
+(`check_mlp.py`) and the opening example (`pick_sample.py`). The 10,000 test digits are read only by
+`evaluate.py` and the Chromium checks, after the weights, the scale and the page are fixed. The numbers above come
+from one such run. The architecture, the 40 epochs, the learning-rate schedule and the augmentation are
+unchanged from an earlier version that trained on all 60,000 digits and saved the epoch with the best test
+accuracy. They were settled while test accuracy was visible, so the figures may still be slightly optimistic.
+That version reported 97.0 % and 95.0 %. The gap mixes the selection effect with 10,000 fewer training
+digits, and this run cannot separate the two.
 
 ## Chromium facts it depends on
 
@@ -116,11 +126,12 @@ then `playwright install chromium`). MNIST comes from `mnist.pkl.gz` of
 mnielsen/neural-networks-and-deep-learning, placed in `data/`. Run everything from the repository root.
 
 ```
-python train_mlp.py 40 mlp.npz                 # 192 and 96 hidden units, about 6 minutes on a CPU
-python check_mlp.py                            # score scale (alpha.json), emulator vs model
-python pick_sample.py 5 1967                   # the opening example (sample.json)
+python train_mlp.py 40 mlp.npz                 # 192 and 96 hidden units; saves the best epoch on validation
+python check_mlp.py                            # score scale (alpha.json) and emulator vs model, on validation
+python pick_sample.py 5 4151                   # the opening example (sample.json), from validation
 python build_page.py                           # site/index.html and site/test.html
-python browser_check_mlp.py 200 1,1.25,2      # filter vs model in Chromium, by device pixel ratio
+python evaluate.py 10000                       # test: model accuracy, emulator vs model
+python browser_check_mlp.py 200 1,1.25,2      # test: filter vs model in Chromium, by device pixel ratio
 python test_draw.py 1,1.5,2                    # real mouse strokes, Clear, the dot-matrix answer
 ```
 
@@ -141,7 +152,9 @@ modules from the root, so run them as `PYTHONPATH=. python probe/probe21.py`.
 | `compile_mlp.py` | network → filter graph, NumPy emulator of the graph, SVG writer |
 | `build_page.py` | the page: drawing rules, ratio media queries, extract and render filters |
 | `site/template.html` | page markup and styles |
-| `check_mlp.py`, `eval_thin.py`, `compare_models.py` | accuracy and emulator checks |
+| `check_mlp.py` | score scale from validation, emulator check |
+| `evaluate.py` | the test figures, run once the model and page are fixed |
+| `eval_thin.py`, `compare_models.py` | accuracy on validation: thin strokes, model against model |
 | `browser_check_mlp.py`, `test_draw.py` | Chromium checks |
 | `probe/` | the experiments behind the facts above, and screenshot helpers |
 | `attic/` | the earlier CNN attempt, stopped by the 256-tap limit |

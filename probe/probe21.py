@@ -6,8 +6,8 @@ from playwright.sync_api import sync_playwright
 import train as T
 from train_mlp import MLP, blur
 from compile_mlp import SLOTS
-X, y, Xt, yt = T.load()
-grids = T.batch_grid(Xt, range(40), None, aug=False)[:, 0]
+_, (Xv, _), _ = T.load()
+grids = T.batch_grid(Xv, range(40), None, aug=False)[:, 0]
 net = MLP(); net.p = dict(np.load("mlp.npz")); pred = net.predict(blur(grids))
 with sync_playwright() as p:
     b = p.chromium.launch()

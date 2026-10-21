@@ -10,7 +10,7 @@ Network (every layer is one feConvolveMatrix per output channel in the browser):
 clip01 is what a filter primitive does to its result anyway (a ReLU capped at 1). Activations are
 rounded to 8 bits in the forward pass (straight-through gradients), as a browser may store them.
 
-    python train.py            writes model.npz and prints accuracies
+    python train.py            writes model.npz and prints validation accuracies
 """
 from __future__ import annotations
 
@@ -30,10 +30,11 @@ rng = np.random.default_rng(0)
 
 # ------------------------------------------------------------------ data
 def load():
-    tr, va, te = pickle.load(gzip.open("data/mnist.pkl.gz"), encoding="latin1")
-    X = np.concatenate([tr[0], va[0]]).reshape(-1, 28, 28)
-    y = np.concatenate([tr[1], va[1]])
-    return X, y, te[0].reshape(-1, 28, 28), te[1]
+    """(train, validation, test) as (images 28x28, labels): 50,000, 10,000 and 10,000 digits.
+    Training fits on train; every choice made from results (checkpoint, score scale, opening example)
+    reads validation; test is read only by evaluate.py and the Chromium check, once the rest is fixed."""
+    splits = pickle.load(gzip.open("data/mnist.pkl.gz"), encoding="latin1")
+    return tuple((x.reshape(-1, 28, 28), y) for x, y in splits)
 
 
 def to_grid(img28, thr):
@@ -163,10 +164,10 @@ class Net:
 
 
 def main():
-    X, y, Xt, yt = load()
+    (X, y), (Xv, yv), _ = load()
     r = np.random.default_rng(1)
-    clean_test = batch_grid(Xt, range(len(Xt)), r, aug=False)
-    aug_test = batch_grid(Xt, range(len(Xt)), np.random.default_rng(2), aug=True)
+    clean_val = batch_grid(Xv, range(len(Xv)), r, aug=False)
+    aug_val = batch_grid(Xv, range(len(Xv)), np.random.default_rng(2), aug=True)
     net = Net()
     epochs = int(sys.argv[1]) if len(sys.argv) > 1 else 14
     B = 128
@@ -179,9 +180,9 @@ def main():
             idx = perm[i:i + B]
             xb = batch_grid(X, idx, r, aug=r.random() < 0.85)
             losses.append(net.step(xb, y[idx], lr))
-        acc_c = (net.predict(clean_test) == yt).mean()
-        acc_a = (net.predict(aug_test) == yt).mean()
-        print(f"epoch {ep + 1}: loss {np.mean(losses):.3f}, test clean {acc_c:.4f}, test augmented {acc_a:.4f} ({time.time() - t0:.0f}s)", flush=True)
+        acc_c = (net.predict(clean_val) == yv).mean()
+        acc_a = (net.predict(aug_val) == yv).mean()
+        print(f"epoch {ep + 1}: loss {np.mean(losses):.3f}, val clean {acc_c:.4f}, val augmented {acc_a:.4f} ({time.time() - t0:.0f}s)", flush=True)
         np.savez("model.npz", **net.p, C=np.array([C1, C2, C3]), DIL=np.array(DIL))
 
 

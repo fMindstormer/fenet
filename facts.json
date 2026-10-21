@@ -1,1 +1,1 @@
-{"acc_clean": "97.0%", "acc_thin": "95.0%", "agree": "same answer as the NumPy model on 1,592 of 1,600 test digits (200 at each of 8 zoom levels, GPU and software raster alike); the 8 are one near-tie"}
+{"acc_clean": "96.6%", "acc_thin": "94.9%", "agree": "same answer as the NumPy model on 1,592 of 1,600 test digits (200 at each of 8 zoom levels, GPU and software raster alike); the 8 are one near-tie"}

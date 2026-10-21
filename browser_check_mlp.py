@@ -12,7 +12,7 @@ from readout import launch, read
 
 n = int(sys.argv[1]) if len(sys.argv) > 1 else 100
 dprs = [float(d) for d in (sys.argv[2].split(",") if len(sys.argv) > 2 else ["1"])]
-X, y, Xt, yt = T.load()
+_, _, (Xt, yt) = T.load()
 grids = T.batch_grid(Xt, range(n), None, aug=False)[:, 0]
 net = MLP(); net.p = dict(np.load("mlp.npz"))
 pred = net.predict(blur(grids))

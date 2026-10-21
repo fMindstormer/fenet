@@ -8,7 +8,7 @@
 clip01 is the clamp every filter primitive applies; activations are rounded to 8 bits in the forward
 pass with straight-through gradients.
 
-    python train_mlp.py [epochs] [out]  writes mlp.npz (or out)
+    python train_mlp.py [epochs] [out]  writes mlp.npz (or out): the epoch with the best validation accuracy
 """
 from __future__ import annotations
 
@@ -100,12 +100,12 @@ class MLP:
 
 
 def main():
-    X, y, Xt, yt = T.load()
+    (X, y), (Xv, yv), _ = T.load()
     r = np.random.default_rng(1)
-    clean = blur(T.batch_grid(Xt, range(len(Xt)), r, aug=False)[:, 0])
-    aug = blur(T.batch_grid(Xt, range(len(Xt)), np.random.default_rng(2), aug=True)[:, 0])
+    clean = blur(T.batch_grid(Xv, range(len(Xv)), r, aug=False)[:, 0])
+    aug = blur(T.batch_grid(Xv, range(len(Xv)), np.random.default_rng(2), aug=True)[:, 0])
     r3 = np.random.default_rng(3)
-    thin = blur(np.stack([thin_augment(Xt[i], r3) for i in range(len(Xt))]))
+    thin = blur(np.stack([thin_augment(Xv[i], r3) for i in range(len(Xv))]))
     net = MLP()
     epochs = int(sys.argv[1]) if len(sys.argv) > 1 else 30
     out = sys.argv[2] if len(sys.argv) > 2 else "mlp.npz"
@@ -120,11 +120,12 @@ def main():
             idx = perm[i:i + B]
             xb = blur(batch(X, idx, r, aug=r.random() < 0.85))
             losses.append(net.step(xb, y[idx], lr))
-        ac, aa, at = ((net.predict(v) == yt).mean() for v in (clean, aug, thin))
-        print(f"epoch {ep + 1}: loss {np.mean(losses):.3f}, test clean {ac:.4f}, augmented {aa:.4f}, thin {at:.4f} ({time.time() - t0:.0f}s)", flush=True)
-        if ac + aa + at > best:
-            best = ac + aa + at
+        ac, aa, at = ((net.predict(v) == yv).mean() for v in (clean, aug, thin))
+        print(f"epoch {ep + 1}: loss {np.mean(losses):.3f}, val clean {ac:.4f}, augmented {aa:.4f}, thin {at:.4f} ({time.time() - t0:.0f}s)", flush=True)
+        if ac + aa + at > best:                  # the checkpoint is chosen on validation, never test
+            best, best_ep = ac + aa + at, ep + 1
             np.savez(out, **net.p)
+    print(f"saved epoch {best_ep} to {out}")
 
 
 if __name__ == "__main__":

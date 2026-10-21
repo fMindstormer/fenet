@@ -8,8 +8,8 @@ from compile import build, emulate, to_svg, N
 
 model = dict(np.load("model.npz")); alpha = json.load(open("alpha.json"))["alpha"]
 g = build(model, alpha)
-X, y, Xt, yt = T.load()
-x = T.batch_grid(Xt, [0], None, aug=False)[0, 0]
+_, (Xv, _), _ = T.load()
+x = T.batch_grid(Xv, [0], None, aug=False)[0, 0]
 
 def emulate_until(g, x, upto):
     g2 = copy.copy(g); g2.ops = g.ops[:upto + 1]; g2.output = g.ops[upto][0]
