@@ -1,0 +1,13 @@
+# MNIST, downloaded separately (see data/README.txt)
+data/*.gz
+
+# build and check outputs
+site/test.html
+model.npz
+*.png
+
+__pycache__/
+*.pyc
+.venv/
+venv/
+.DS_Store

@@ -1,0 +1,8 @@
+dpr 0.75: 200 digits, the page prints the model's answer for 200, the true digit for 195, something unreadable for 0; render+read median 660 ms
+dpr 1.0: 200 digits, the page prints the model's answer for 200, the true digit for 195, something unreadable for 0; render+read median 385 ms
+dpr 1.25: 200 digits, the page prints the model's answer for 200, the true digit for 195, something unreadable for 0; render+read median 645 ms
+dpr 1.5: 200 digits, the page prints the model's answer for 200, the true digit for 195, something unreadable for 0; render+read median 642 ms
+dpr 1.75: 200 digits, the page prints the model's answer for 200, the true digit for 195, something unreadable for 0; render+read median 697 ms
+dpr 2.0: 200 digits, the page prints the model's answer for 200, the true digit for 195, something unreadable for 0; render+read median 708 ms
+dpr 2.5: 200 digits, the page prints the model's answer for 200, the true digit for 195, something unreadable for 0; render+read median 942 ms
+dpr 3.0: 200 digits, the page prints the model's answer for 200, the true digit for 195, something unreadable for 0; render+read median 1169 ms

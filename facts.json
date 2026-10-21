@@ -1,0 +1,1 @@
+{"acc_clean": "97.0%", "acc_thin": "95.0%", "agree": "same answer as the NumPy model on 1,600 of 1,600 test digits (200 at each of 8 zoom levels)"}
