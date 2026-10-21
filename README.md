@@ -4,7 +4,7 @@ A handwritten-digit recognizer that runs inside SVG filters. The page has no Jav
 drawing, and a chain of filter primitives (mostly `feConvolveMatrix`) evaluates a small neural network
 on it and prints the answer.
 
-Live page: https://claude.ai/artifact/3h6wNEPwsKxLcoC8Ugvbxn
+Live page: https://fmindstormer.github.io/fenet/
 
 ```
 drawing pad (CSS :active + :hover, transition delay of 1,000,000 s)
@@ -115,8 +115,8 @@ python browser_check_mlp.py 200 1,1.25,2      # filter vs model in Chromium, by 
 python test_draw.py 1,1.5,2                    # real mouse strokes, Clear, the dot-matrix answer
 ```
 
-`site/index.html` is the published page and has no document skeleton; to open the page locally, use
-`site/test.html`. `build_page.py` and `test_draw.py` run without MNIST. The scripts in `probe/` and
+`site/test.html` is the standalone page; GitHub Pages builds and serves it (`.github/workflows/pages.yml`).
+`site/index.html` is the same page without a document skeleton, for hosts that add their own. `build_page.py` and `test_draw.py` run without MNIST. The scripts in `probe/` and
 `attic/` import modules from the root, so run them as `PYTHONPATH=. python probe/probe21.py`.
 
 ## Files
@@ -139,6 +139,8 @@ python test_draw.py 1,1.5,2                    # real mouse strokes, Clear, the 
 ## Limits
 
 - Chromium only. Other engines place filter pixels differently and may misread.
+- The page must be shown unscaled. A frame scaled by its parent (the claude.ai artifact viewer shows pages
+  at 90 %) draws it at a scale the media queries can't see, and the network reads an empty pad.
 - Zoom: any device pixel ratio of 1, the 65 ratios above 1 listed by `ratios()` in `build_page.py`, and ten common ratios below 1.
   Other zoom levels show a note asking for 100 %.
 - Touch: dragging does not move `:hover`, so on a touchscreen cells are tapped one at a time.
