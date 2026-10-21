@@ -11,7 +11,7 @@ drawing pad (CSS :active + :hover, transition delay of 1,000,000 s)
    │ 196 :has() rules
    ▼
 14 × 14 mirror, one cell = one device pixel (media queries scale it by 1/devicePixelRatio)
-   │ filter #net — SVG filter on the mirror
+   │ filters #net1–#net3 — one SVG filter per layer, on nested groups around the mirror
    ▼
 threshold → 3×3 blur → 192 neurons → 96 neurons → 10 scores → argmax → tie-break
    │ CSS filter on the result SVG: url(#x<ratio>) url(#render)
@@ -35,15 +35,20 @@ one device pixel, which is the unit `feConvolveMatrix` works in.
 
 **Network.** One `feConvolveMatrix` per neuron. The kernel is 14 × 14 (196 taps), its target is the
 neuron's own pixel, and its subregion is that one pixel, so the primitive computes a full dot product
-over the previous layer's image plus a bias, and clamps it to 0…1. Every neuron of a layer asks for the
-same input rectangle, so Chromium computes the input once. Each layer is merged onto a black square,
-because `preserveAlpha` copies the source's alpha.
+over the previous layer's image plus a bias, and clamps it to 0…1. Each layer is merged onto a black
+square, because `preserveAlpha` copies the source's alpha.
+
+Each layer is its own filter, on nested groups with the first layer innermost. A group's content is drawn
+once before its filter runs, so a layer reads the one below as a finished image. In one big filter,
+Chromium's GPU raster would compute layer 1 again for every layer-2 neuron and give up (see below).
+The ink flag, whether anything is drawn at all, rides along in pixels no neuron uses: (13, 6) in
+layer 1, (13, 9) in layer 2.
 
 | stage | primitives |
 |---|---|
 | threshold + 3×3 blur | 2 |
-| hidden layer 1 (positions spread over the 14 × 14 image) | 192 + flood + merge |
-| hidden layer 2 | 96 + flood + merge |
+| hidden layer 1 (positions spread over the 14 × 14 image), ink flag | 192 + flood + 1 + merge |
+| hidden layer 2, ink flag moved to (13, 9) | 96 + flood + 1 + merge |
 | scores at slots (1 + 4·(k mod 4), 1 + 4·⌊k/4⌋) | 10 + flood + merge |
 | argmax: `feMorphology` dilate to the max, `feComposite` 1 + score − max, lookup table "is exactly 1" | 3 |
 | tie-break: one 25 × 9 convolution, +1 at the pixel, −1 wherever an earlier slot can sit | 1 |
@@ -70,22 +75,26 @@ dark theme.
 | MNIST test, pooled to 14 × 14 | 97.0 % |
 | MNIST test, skeletonized to one-cell strokes | 95.0 % |
 | emulator vs NumPy model | identical except ties, which the filter gives to the lower digit |
-| Chromium vs NumPy model | the page prints the model's answer for 1,600 of 1,600 test digits, 200 at each of 8 zoom levels from 0.75 to 3 (`logs_agreement.txt`) |
+| Chromium vs NumPy model | the page prints the model's answer for 199 of 200 test digits at each of 8 zoom levels from 0.75 to 3, with GPU and with software raster (`logs_agreement.txt`). The odd one is a near-tie: Chromium's convolutions don't round exactly like the emulator |
 | page size | about 710 kB, all inline except the Google Fonts stylesheet |
-| time per painted cell | about 0.2 s at 1× in headless Chromium with software raster on 2 CPU cores; GPU untested |
+| time per painted cell | under 0.1 s in Chromium 156 on an Apple M4, GPU or software raster (`time_frames.py`, screenshot included) |
 
 ## Chromium facts it depends on
 
-Found with the probes in `probe/` (headless Chromium, software raster):
+Found with the probes in `probe/`, in headless Chromium with software raster unless GPU raster is named
+(`probe28.py`: Chromium 156, Apple M4):
 
 - `feConvolveMatrix` works in device pixels and ignores `kernelUnitLength`.
 - A kernel with more than 256 taps is ignored and the result is transparent. 196 fits.
 - `edgeMode="none"` reads zero outside the input; with `preserveAlpha` the result keeps the source alpha.
 - Results are stored as 8-bit premultiplied colour between primitives. Training rounds every activation
   the same way (straight-through gradients).
-- A shared input is computed once when every consumer asks for the same rectangle, as a layer's
-  neurons do. A shared node with consumers of different kinds can make Chromium evaluate everything
-  above it again: `feBlend` was the worst (the argmax took five times longer than with
+- With software raster, a shared input is computed once when every consumer asks for the same
+  rectangle, as a layer's neurons do. GPU raster (Chrome and Arc on a Mac) computes it again for every
+  consumer, and a filter whose work grows too far comes out transparent: 96 layer-2 neurons over a
+  196-primitive layer 1 did, and the limit fell between 43 and 44 of them. Hence one filter per layer.
+- With software raster, a shared node with consumers of different kinds can make Chromium evaluate
+  everything above it again: `feBlend` was the worst (the argmax took five times longer than with
   `feComposite arithmetic`), and a second branch of score neurons cost almost as much.
 - A filter sees its source only inside its own filter region.
 - An element with `will-change: transform` is rasterized from a whole device pixel at a scale of
@@ -115,9 +124,13 @@ python browser_check_mlp.py 200 1,1.25,2      # filter vs model in Chromium, by 
 python test_draw.py 1,1.5,2                    # real mouse strokes, Clear, the dot-matrix answer
 ```
 
+The Chromium checks run full Chromium, which rasterizes on the GPU where there is one, as desktop
+browsers do; `RASTER=sw` forces software raster.
+
 `site/test.html` is the standalone page; GitHub Pages builds and serves it (`.github/workflows/pages.yml`).
-`site/index.html` is the same page without a document skeleton, for hosts that add their own. `build_page.py` and `test_draw.py` run without MNIST. The scripts in `probe/` and
-`attic/` import modules from the root, so run them as `PYTHONPATH=. python probe/probe21.py`.
+`site/index.html` is the same page without a document skeleton, for hosts that add their own.
+`build_page.py` and `test_draw.py` run without MNIST. The scripts in `probe/` and `attic/` import
+modules from the root, so run them as `PYTHONPATH=. python probe/probe21.py`.
 
 ## Files
 

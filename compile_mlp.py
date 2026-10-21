@@ -1,9 +1,15 @@
-"""Compile the perceptron (mlp.npz) into an SVG filter, and emulate the filter in NumPy.
+"""Compile the perceptron (mlp.npz) into SVG filters, and emulate them in NumPy.
 
 User units are device pixels (the page scales the group by 1/devicePixelRatio). Every image is
 14x14. A neuron is one feConvolveMatrix: a 14x14 kernel whose target is the neuron's own pixel, so
 the kernel always spans exactly the 14x14 input, and every neuron of a layer asks for the same input
 region (Chromium can then reuse it). A layer's neurons are merged onto a black square.
+
+Each layer is its own filter (#net1, #net2, #net3), applied on nested groups. Chromium's GPU raster
+does not reuse a shared input: in one filter, every layer-2 neuron would compute layer 1 again, and
+past about 43 of them the result is empty. A group's content is drawn once before its filter runs,
+so a layer reads the one below as a finished image. The ink flag rides along in pixels no neuron
+uses: CARRY in layer 1, INK in layer 2.
 
 Output: the winning class lights a 3x3 block centred on its slot (1 + 4*(k % 4), 1 + 4*(k // 4));
 the block at (13, 9) says whether anything is drawn. These are in the red channel; the green channel
@@ -17,6 +23,7 @@ from scipy import ndimage
 N = 14
 SLOTS = [(1 + 4 * (k % 4), 1 + 4 * (k // 4)) for k in range(10)]
 INK = (13, 9)
+CARRY = (13, 6)              # free in layer 1 (192 neurons), above INK so the move is a plain offset
 BLUR = np.array([[1, 2, 1], [2, 4, 2], [1, 2, 1]]) / 16
 
 
@@ -30,11 +37,20 @@ def positions(n):
 class Graph:
     def __init__(self):
         self.ops = []
+        self.cuts = []           # op indices where the next filter starts
 
     def add(self, kind, **p):
         name = f"r{len(self.ops)}"
         self.ops.append((name, kind, p))
         return name
+
+    def cut(self):
+        """End the current filter: the next one reads its last result as SourceGraphic."""
+        self.cuts.append(len(self.ops))
+
+    def stages(self):
+        bounds = [0] + self.cuts + [len(self.ops)]
+        return [self.ops[a:b] for a, b in zip(bounds, bounds[1:])]
 
 
 def build(m, alpha):
@@ -47,7 +63,9 @@ def build(m, alpha):
     inp = g.add("threshold", src="SourceGraphic", region=full)
     blur = g.add("conv", src=inp, K=np.pad(BLUR, ((0, 11), (0, 11))), tx=1, ty=1, ox=3, oy=3, bias=0.0, region=full,
                  K3=BLUR)
-    layers = []
+    assert CARRY not in P1 and INK not in P2 and CARRY[0] <= INK[0] and CARRY[1] <= INK[1]
+    # whether anything is drawn, kept in a pixel the layer-2 kernels ignore
+    carry = g.add("dilate", src=inp, r=N, region=(*CARRY, 1, 1))
     prev = blur
     for W, b, P, Pin in ((W1, b1, P1, None), (W2, b2, P2, P1)):
         black = g.add("flood", color=0.0, region=full)
@@ -60,8 +78,10 @@ def build(m, alpha):
                 for i, (px, py) in enumerate(Pin):
                     img[py, px] = W[i, j]
             units.append(g.add("neuron", src=prev, img=img, x=hx, y=hy, bias=float(b[j]), region=(hx, hy, 1, 1)))
-        prev = g.add("merge", srcs=[black] + units, region=full)
-        layers.append(prev)
+        prev = g.add("merge", srcs=[black] + units + [carry], region=full)
+        g.cut()
+        if Pin is None:          # layer 2 moves the flag to INK, which the score kernels ignore
+            carry = g.add("offset", src=prev, dx=INK[0] - CARRY[0], dy=INK[1] - CARRY[1], region=(*INK, 1, 1))
     black = g.add("flood", color=0.0, region=full)
     scores, scores_img, score_bias = [], [], []
     for k, (sx, sy) in enumerate(SLOTS):
@@ -87,7 +107,7 @@ def build(m, alpha):
             taps[(dx, dy)] = -1.0
     unique = g.add("taps", src=onehot, taps=taps, region=full)
     winner = g.add("dilate", src=unique, r=1, region=full)
-    ink = g.add("dilate", src=inp, r=N, region=(INK[0], INK[1], 1, 1))
+    ink = g.add("offset", src=prev, dx=0, dy=0, region=(*INK, 1, 1))
     inkb = g.add("dilate", src=ink, r=1, region=(INK[0] - 1, INK[1] - 1, 3, 3))
     marks = g.add("sum", a=winner, b=inkb, region=full)
     # output: the marks in red, the scores (grown to 3x3 blocks, like the marks) in green, so a reader
@@ -192,70 +212,94 @@ def fmt(w):
     return s
 
 
+def primitive(name, kind, p):
+    x0, y0, w, h = p["region"]
+    reg = f'x="{x0}" y="{y0}" width="{w}" height="{h}"'
+    if kind == "flood":
+        c = round(p["color"] * 255)
+        return f'<feFlood flood-color="rgb({c},{c},{c})" {reg} result="{name}"/>'
+    elif kind == "cell":
+        return f'<feFlood id="m{p["index"]}" {reg} result="{name}"/>'
+    elif kind == "threshold":
+        return (f'<feComponentTransfer in="{p["src"]}" {reg} result="{name}"><feFuncR type="discrete" tableValues="0 1"/>'
+                f'<feFuncG type="discrete" tableValues="0 1"/><feFuncB type="discrete" tableValues="0 1"/></feComponentTransfer>')
+    elif kind == "conv":
+        K = p["K3"][::-1, ::-1].ravel()
+        return (f'<feConvolveMatrix in="{p["src"]}" order="3" kernelMatrix="{" ".join(fmt(k) for k in K)}" divisor="1" '
+                f'bias="0" preserveAlpha="true" edgeMode="none" {reg} result="{name}"/>')
+    elif kind == "neuron":
+        K = p["img"][::-1, ::-1].ravel()        # feConvolveMatrix flips the kernel
+        return (f'<feConvolveMatrix in="{p["src"]}" order="{N}" targetX="{p["x"]}" targetY="{p["y"]}" divisor="1" '
+                f'bias="{fmt(p["bias"])}" preserveAlpha="true" edgeMode="none" {reg} result="{name}" '
+                f'kernelMatrix="{" ".join(fmt(k) for k in K)}"/>')
+    elif kind == "merge":
+        nodes = "".join(f'<feMergeNode in="{s}"/>' for s in p["srcs"])
+        return f'<feMerge {reg} result="{name}">{nodes}</feMerge>'
+    elif kind == "dilate":
+        rad = p["r"] if "r" in p else f'{p["rx"]} {p["ry"]}'
+        return f'<feMorphology in="{p["src"]}" operator="dilate" radius="{rad}" {reg} result="{name}"/>'
+    elif kind == "chan":
+        m = {"R": "1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0", "G": "0 0 0 0 0  1 0 0 0 0  0 0 0 0 0  0 0 0 1 0"}[p["keep"]]
+        return f'<feColorMatrix in="{p["src"]}" type="matrix" values="{m}" {reg} result="{name}"/>'
+    elif kind == "near":
+        return f'<feComposite in="{p["a"]}" in2="{p["b"]}" operator="arithmetic" k2="1" k3="-1" k4="1" {reg} result="{name}"/>'
+    elif kind == "isone":
+        table = " ".join(["0"] * 255 + ["1"])
+        return (f'<feComponentTransfer in="{p["src"]}" {reg} result="{name}"><feFuncR type="discrete" tableValues="{table}"/>'
+                f'<feFuncG type="discrete" tableValues="{table}"/><feFuncB type="discrete" tableValues="{table}"/>'
+                f'<feFuncA type="linear" slope="0" intercept="1"/></feComponentTransfer>')
+    elif kind == "taps":
+        xs = [dx for dx, dy in p["taps"]] + [0]; ys = [dy for dx, dy in p["taps"]] + [0]
+        tx, ty = -min(xs), -min(ys)
+        ox, oy = max(xs) + tx + 1, max(ys) + ty + 1
+        K = np.zeros(ox * oy)
+        for (dx, dy), w in p["taps"].items():
+            j, i = dx + tx, dy + ty
+            K[(oy - 1 - i) * ox + (ox - 1 - j)] = w
+        return (f'<feConvolveMatrix in="{p["src"]}" order="{ox} {oy}" targetX="{tx}" targetY="{ty}" divisor="1" bias="0" '
+                f'preserveAlpha="true" edgeMode="none" {reg} result="{name}" kernelMatrix="{" ".join(fmt(k) for k in K)}"/>')
+    elif kind == "not":
+        return (f'<feComponentTransfer in="{p["src"]}" {reg} result="{name}"><feFuncR type="linear" slope="-1" intercept="1"/>'
+                f'<feFuncG type="linear" slope="-1" intercept="1"/><feFuncB type="linear" slope="-1" intercept="1"/></feComponentTransfer>')
+    elif kind == "mul":
+        return f'<feComposite in="{p["a"]}" in2="{p["b"]}" operator="arithmetic" k1="1" {reg} result="{name}"/>'
+    elif kind == "diff":
+        return f'<feBlend in="{p["a"]}" in2="{p["b"]}" mode="difference" {reg} result="{name}"/>'
+    elif kind == "iszero":
+        table = " ".join(["1"] + ["0"] * 255)
+        return (f'<feComponentTransfer in="{p["src"]}" {reg} result="{name}"><feFuncR type="discrete" tableValues="{table}"/>'
+                f'<feFuncG type="discrete" tableValues="{table}"/><feFuncB type="discrete" tableValues="{table}"/>'
+                f'<feFuncA type="linear" slope="0" intercept="1"/></feComponentTransfer>')
+    elif kind == "sum":
+        return f'<feComposite in="{p["a"]}" in2="{p["b"]}" operator="arithmetic" k2="1" k3="1" {reg} result="{name}"/>'
+    elif kind == "offset":
+        return f'<feOffset in="{p["src"]}" dx="{p["dx"]}" dy="{p["dy"]}" {reg} result="{name}"/>'
+    raise ValueError(kind)
+
+
 def to_svg(g, fid="net"):
-    out = [f'<filter id="{fid}" x="0" y="0" width="{N}" height="{N}" filterUnits="userSpaceOnUse" '
-           f'primitiveUnits="userSpaceOnUse" color-interpolation-filters="sRGB">']
-    for name, kind, p in g.ops:
-        x0, y0, w, h = p["region"]
-        reg = f'x="{x0}" y="{y0}" width="{w}" height="{h}"'
-        if kind == "flood":
-            c = round(p["color"] * 255)
-            out.append(f'<feFlood flood-color="rgb({c},{c},{c})" {reg} result="{name}"/>')
-        elif kind == "cell":
-            out.append(f'<feFlood id="m{p["index"]}" {reg} result="{name}"/>')
-        elif kind == "threshold":
-            out.append(f'<feComponentTransfer in="{p["src"]}" {reg} result="{name}"><feFuncR type="discrete" tableValues="0 1"/>'
-                       f'<feFuncG type="discrete" tableValues="0 1"/><feFuncB type="discrete" tableValues="0 1"/></feComponentTransfer>')
-        elif kind == "conv":
-            K = p["K3"][::-1, ::-1].ravel()
-            out.append(f'<feConvolveMatrix in="{p["src"]}" order="3" kernelMatrix="{" ".join(fmt(k) for k in K)}" divisor="1" '
-                       f'bias="0" preserveAlpha="true" edgeMode="none" {reg} result="{name}"/>')
-        elif kind == "neuron":
-            K = p["img"][::-1, ::-1].ravel()        # feConvolveMatrix flips the kernel
-            out.append(f'<feConvolveMatrix in="{p["src"]}" order="{N}" targetX="{p["x"]}" targetY="{p["y"]}" divisor="1" '
-                       f'bias="{fmt(p["bias"])}" preserveAlpha="true" edgeMode="none" {reg} result="{name}" '
-                       f'kernelMatrix="{" ".join(fmt(k) for k in K)}"/>')
-        elif kind == "merge":
-            nodes = "".join(f'<feMergeNode in="{s}"/>' for s in p["srcs"])
-            out.append(f'<feMerge {reg} result="{name}">{nodes}</feMerge>')
-        elif kind == "dilate":
-            rad = p["r"] if "r" in p else f'{p["rx"]} {p["ry"]}'
-            out.append(f'<feMorphology in="{p["src"]}" operator="dilate" radius="{rad}" {reg} result="{name}"/>')
-        elif kind == "chan":
-            m = {"R": "1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0", "G": "0 0 0 0 0  1 0 0 0 0  0 0 0 0 0  0 0 0 1 0"}[p["keep"]]
-            out.append(f'<feColorMatrix in="{p["src"]}" type="matrix" values="{m}" {reg} result="{name}"/>')
-        elif kind == "near":
-            out.append(f'<feComposite in="{p["a"]}" in2="{p["b"]}" operator="arithmetic" k2="1" k3="-1" k4="1" {reg} result="{name}"/>')
-        elif kind == "isone":
-            table = " ".join(["0"] * 255 + ["1"])
-            out.append(f'<feComponentTransfer in="{p["src"]}" {reg} result="{name}"><feFuncR type="discrete" tableValues="{table}"/>'
-                       f'<feFuncG type="discrete" tableValues="{table}"/><feFuncB type="discrete" tableValues="{table}"/>'
-                       f'<feFuncA type="linear" slope="0" intercept="1"/></feComponentTransfer>')
-        elif kind == "taps":
-            xs = [dx for dx, dy in p["taps"]] + [0]; ys = [dy for dx, dy in p["taps"]] + [0]
-            tx, ty = -min(xs), -min(ys)
-            ox, oy = max(xs) + tx + 1, max(ys) + ty + 1
-            K = np.zeros(ox * oy)
-            for (dx, dy), w in p["taps"].items():
-                j, i = dx + tx, dy + ty
-                K[(oy - 1 - i) * ox + (ox - 1 - j)] = w
-            out.append(f'<feConvolveMatrix in="{p["src"]}" order="{ox} {oy}" targetX="{tx}" targetY="{ty}" divisor="1" bias="0" '
-                       f'preserveAlpha="true" edgeMode="none" {reg} result="{name}" kernelMatrix="{" ".join(fmt(k) for k in K)}"/>')
-        elif kind == "not":
-            out.append(f'<feComponentTransfer in="{p["src"]}" {reg} result="{name}"><feFuncR type="linear" slope="-1" intercept="1"/>'
-                       f'<feFuncG type="linear" slope="-1" intercept="1"/><feFuncB type="linear" slope="-1" intercept="1"/></feComponentTransfer>')
-        elif kind == "mul":
-            out.append(f'<feComposite in="{p["a"]}" in2="{p["b"]}" operator="arithmetic" k1="1" {reg} result="{name}"/>')
-        elif kind == "diff":
-            out.append(f'<feBlend in="{p["a"]}" in2="{p["b"]}" mode="difference" {reg} result="{name}"/>')
-        elif kind == "iszero":
-            table = " ".join(["1"] + ["0"] * 255)
-            out.append(f'<feComponentTransfer in="{p["src"]}" {reg} result="{name}"><feFuncR type="discrete" tableValues="{table}"/>'
-                       f'<feFuncG type="discrete" tableValues="{table}"/><feFuncB type="discrete" tableValues="{table}"/>'
-                       f'<feFuncA type="linear" slope="0" intercept="1"/></feComponentTransfer>')
-        elif kind == "sum":
-            out.append(f'<feComposite in="{p["a"]}" in2="{p["b"]}" operator="arithmetic" k2="1" k3="1" {reg} result="{name}"/>')
-        elif kind == "offset":
-            out.append(f'<feOffset in="{p["src"]}" dx="{p["dx"]}" dy="{p["dy"]}" {reg} result="{name}"/>')
-    out.append("</filter>")
+    """One filter per stage, #<fid>1, #<fid>2, ..., for groups nested innermost first. A reference to the
+    previous stage's last result becomes SourceGraphic; any other reference across stages is an error."""
+    out, last = [], None
+    for k, ops in enumerate(g.stages(), 1):
+        out.append(f'<filter id="{fid}{k}" x="0" y="0" width="{N}" height="{N}" filterUnits="userSpaceOnUse" '
+                   f'primitiveUnits="userSpaceOnUse" color-interpolation-filters="sRGB">')
+        seen = {"SourceGraphic"} if k == 1 else set()
+
+        def ref(r):
+            if r == last:
+                return "SourceGraphic"
+            assert r in seen, f"{r} is not in filter {k}"
+            return r
+        for name, kind, p in ops:
+            p = dict(p)
+            for key in ("src", "a", "b"):
+                if key in p:
+                    p[key] = ref(p[key])
+            if "srcs" in p:
+                p["srcs"] = [ref(r) for r in p["srcs"]]
+            out.append(primitive(name, kind, p))
+            seen.add(name)
+        out.append("</filter>")
+        last = ops[-1][0]
     return "\n".join(out)

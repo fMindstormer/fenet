@@ -5,8 +5,9 @@
 
 How the result SVG is drawn:
   * `.net` holds the 14x14 mirror of the drawing, scaled by 1/devicePixelRatio so one cell is one
-    device pixel; the network filter (#net, from compile_mlp) runs on it. Its output: the winner's
-    3x3 block around slot k, the ink flag at (13, 9), the score of class k two rows below slot k.
+    device pixel; the network runs on it as one filter per layer (#net1..#net3, from compile_mlp) on
+    nested groups. Its output: the winner's 3x3 block around slot k and the ink flag at (13, 9) in red,
+    the score of class k as a 3x3 block around slot k in green.
   * The CSS filter on `.out` is two filters in a row. The first (#x<ratio>, one per supported
     ratio) copies those single device pixels into 4x4-CSS-px blocks of a small control image. The
     second (#render, shared) reads the blocks and draws the answer as a 5x7 dot-matrix digit and
@@ -184,10 +185,14 @@ def page(g, test=False, facts=None):
     tmpl = (ROOT / "site" / "template.html").read_text()
     grid = (f'<svg class="grid" viewBox="0 0 {N} {N}" width="{PAD}" height="{PAD}" shape-rendering="crispEdges" '
             f'role="img" aria-label="Drawing pad, 14 by 14 cells">{cells}</svg>')
+    # one group per filter, the first layer innermost: each layer reads the one below as a finished image
+    nested = (f'<g class="mirror" filter="url(#net1)" shape-rendering="crispEdges">'
+              f'<rect class="bg" width="{N}" height="{N}" fill="#000"/>{mirror}</g>')
+    for k in range(2, len(g.stages()) + 1):
+        nested = f'<g filter="url(#net{k})">{nested}</g>'
     out = (f'<svg class="out" width="{W}" height="{H}" viewBox="0 0 {W} {H}" aria-hidden="true">'
            f'<defs>{net}{"".join(s for _, s in extracts)}{render_filter()}</defs>'
-           f'<g class="net"><g class="mirror" filter="url(#net)" shape-rendering="crispEdges">'
-           f'<rect class="bg" width="{N}" height="{N}" fill="#000"/>{mirror}</g></g></svg>')
+           f'<g class="net">{nested}</g></svg>')
     html = (tmpl.replace("/*RULES*/", rules).replace("/*MEDIA*/", "\n".join(media))
             .replace("<!--GRID-->", grid).replace("<!--OUT-->", out))
     for k, v in (facts or {}).items():

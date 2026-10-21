@@ -3,9 +3,10 @@ import os, sys, time
 import numpy as np
 from pathlib import Path
 from playwright.sync_api import sync_playwright
+from readout import launch
 page = sys.argv[1] if len(sys.argv) > 1 else "site/test.html"
 with sync_playwright() as p:
-    b = p.chromium.launch()
+    b = launch(p)
     for dpr in [float(v) for v in os.environ.get("DPRS", "1,2").split(",")]:
         pg = b.new_page(viewport={"width": 1100, "height": 900}, device_scale_factor=dpr)
         pg.goto(Path(page).resolve().as_uri())

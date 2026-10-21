@@ -8,7 +8,7 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 import train as T
 from train_mlp import MLP, blur
-from readout import read
+from readout import launch, read
 
 n = int(sys.argv[1]) if len(sys.argv) > 1 else 100
 dprs = [float(d) for d in (sys.argv[2].split(",") if len(sys.argv) > 2 else ["1"])]
@@ -17,7 +17,7 @@ grids = T.batch_grid(Xt, range(n), None, aug=False)[:, 0]
 net = MLP(); net.p = dict(np.load("mlp.npz"))
 pred = net.predict(blur(grids))
 with sync_playwright() as p:
-    b = p.chromium.launch()
+    b = launch(p)
     for dpr in dprs:
         pg = b.new_page(viewport={"width": 1100, "height": 900}, device_scale_factor=dpr)
         pg.goto(Path("site/test.html").resolve().as_uri())

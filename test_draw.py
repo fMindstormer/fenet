@@ -3,7 +3,7 @@ import os, sys, time
 import numpy as np
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-from readout import read
+from readout import launch, read
 
 STROKES = {  # cell paths (col, row), drawn as press-drag-release
     "7": [[(3, 3), (10, 3), (6, 12)]],
@@ -26,7 +26,7 @@ def stroke(pg, gbox, path, steps=6):
 ONLY_OPEN = bool(os.environ.get("ONLY_OPEN"))
 dprs = [float(v) for v in sys.argv[1].split(",")] if len(sys.argv) > 1 else [1.0]
 with sync_playwright() as p:
-    b = p.chromium.launch()
+    b = launch(p)
     for dpr in dprs:
         pg = b.new_page(viewport={"width": 1100, "height": 900}, device_scale_factor=dpr)
         pg.goto(Path("site/test.html").resolve().as_uri())

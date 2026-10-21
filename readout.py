@@ -1,11 +1,19 @@
 """Read the dot-matrix answer off a screenshot of the page."""
 import io
+import os
 import numpy as np
 from PIL import Image
 from build_page import FONT, GX, GY, PITCH
 
 MARK = np.array([0xd1, 0x36, 0x2b])     # --mark, light theme
 DIM = np.array([0x6f, 0x9b, 0xc8])      # --dropout, light theme
+
+
+def launch(p):
+    """Full Chromium, which rasterizes on the GPU where there is one, as desktop browsers do (the headless
+    shell is software only). RASTER=sw forces software raster."""
+    flag = "--disable-gpu-rasterization" if os.environ.get("RASTER") == "sw" else "--enable-gpu-rasterization"
+    return p.chromium.launch(channel="chromium", args=[flag])
 
 
 def read(pg, box, mark=MARK, dim=DIM):
