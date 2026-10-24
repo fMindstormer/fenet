@@ -157,13 +157,14 @@ footer a { color: inherit; }
         <dt>Largest kernel</dt><dd>196 taps (Chromium's limit is 256)</dd>
         <dt>MNIST test digits</dt><dd>{{acc_clean}} correct</dd>
         <dt>Same, one-cell strokes</dt><dd>{{acc_thin}} correct</dd>
+        <dt>Pen-written digits</dt><dd>{{acc_pen}} correct, by 14 writers it never saw (UCI Pendigits)</dd>
         <dt>Filter vs. model</dt><dd>{{agree}}</dd>
         <dt>Zoom levels</dt><dd>{{nratios}} device pixel ratios from 0.5 to 5; others show a note</dd>
         <dt>JavaScript</dt><dd>none</dd>
       </dl>
-      <p class="note">Built for Chromium browsers (Chrome, Edge, Brave, Arc). Other engines place filter pixels differently and may misread. Trained in NumPy on MNIST, reduced to 14 × 14 cells and thinned to look like mouse strokes, with every activation rounded to 8 bits as the browser stores it.</p>
+      <p class="note">Built for Chromium browsers (Chrome, Edge, Brave, Arc). Other engines place filter pixels differently and may misread. Trained in NumPy on MNIST, reduced to 14 × 14 cells and thinned to look like mouse strokes, and on pen-written digits from UCI Pendigits, with every activation rounded to 8 bits as the browser stores it.</p>
     </div>
   </section>
 
-  <footer>fenet · <a href="https://github.com/fMindstormer">fMindstormer</a> · MNIST by LeCun, Cortes and Burges</footer>
+  <footer>fenet · <a href="https://github.com/fMindstormer">fMindstormer</a> · MNIST by LeCun, Cortes and Burges · Pendigits by Alpaydin and Alimoglu (CC BY 4.0)</footer>
 </main>

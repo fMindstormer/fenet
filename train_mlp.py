@@ -8,6 +8,11 @@
 clip01 is the clamp every filter primitive applies; activations are rounded to 8 bits in the forward
 pass with straight-through gradients.
 
+Training digits: MNIST's 50,000, and on average PEN (0.3) of each batch drawn from the pen paths of
+Pendigits' training writers (pendigits.py), whose styles MNIST lacks: 9s with a curled tail, 1s with a
+long upstroke. The checkpoint is the epoch with the best sum of four validation accuracies: MNIST
+clean, augmented and thin, and Pendigits validation.
+
     python train_mlp.py [epochs] [out]  writes mlp.npz (or out): the epoch with the best validation accuracy
 """
 from __future__ import annotations
@@ -18,12 +23,14 @@ import time
 
 import numpy as np
 
+import pendigits as PD
 import train as T
 from scipy import ndimage
 from skimage.morphology import skeletonize
 
 N = 14
 H1, H2 = int(os.environ.get("H1", 192)), int(os.environ.get("H2", 96))
+PEN = float(os.environ.get("PEN", 0.3))
 BLUR = np.array([[1, 2, 1], [2, 4, 2], [1, 2, 1]], np.float32) / 16
 
 
@@ -106,6 +113,9 @@ def main():
     aug = blur(T.batch_grid(Xv, range(len(Xv)), np.random.default_rng(2), aug=True)[:, 0])
     r3 = np.random.default_rng(3)
     thin = blur(np.stack([thin_augment(Xv[i], r3) for i in range(len(Xv))]))
+    pen = PD.split("train")
+    Gp, yp = PD.load("val")
+    vals = [(clean, yv), (aug, yv), (thin, yv), (blur(Gp), yp)]
     net = MLP()
     epochs = int(sys.argv[1]) if len(sys.argv) > 1 else 30
     out = sys.argv[2] if len(sys.argv) > 2 else "mlp.npz"
@@ -118,12 +128,16 @@ def main():
         losses = []
         for i in range(0, len(X) - B + 1, B):
             idx = perm[i:i + B]
-            xb = blur(batch(X, idx, r, aug=r.random() < 0.85))
-            losses.append(net.step(xb, y[idx], lr))
-        ac, aa, at = ((net.predict(v) == yv).mean() for v in (clean, aug, thin))
-        print(f"epoch {ep + 1}: loss {np.mean(losses):.3f}, val clean {ac:.4f}, augmented {aa:.4f}, thin {at:.4f} ({time.time() - t0:.0f}s)", flush=True)
-        if ac + aa + at > best:                  # the checkpoint is chosen on validation, never test
-            best, best_ep = ac + aa + at, ep + 1
+            gb, yb = batch(X, idx, r, aug=r.random() < 0.85), y[idx].copy()
+            k = r.binomial(B, PEN)               # the first k become Pendigits drawings
+            for j, q in enumerate(r.integers(len(pen), size=k)):
+                gb[j], yb[j] = PD.augment(pen[q][1], r), pen[q][0]
+            losses.append(net.step(blur(gb), yb, lr))
+        acc = [(net.predict(v) == t).mean() for v, t in vals]
+        print(f"epoch {ep + 1}: loss {np.mean(losses):.3f}, val clean {acc[0]:.4f}, augmented {acc[1]:.4f}, thin {acc[2]:.4f}, "
+              f"pen {acc[3]:.4f} ({time.time() - t0:.0f}s)", flush=True)
+        if sum(acc) > best:                      # the checkpoint is chosen on validation, never test
+            best, best_ep = sum(acc), ep + 1
             np.savez(out, **net.p)
     print(f"saved epoch {best_ep} to {out}")
 

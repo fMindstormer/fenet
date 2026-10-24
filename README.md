@@ -72,18 +72,33 @@ dark theme.
 | | |
 |---|---|
 | network | 196 → 192 → 96 → 10, 57,322 weights, clipped-linear activations, 8-bit |
-| MNIST test, pooled to 14 × 14 | 96.6 % |
-| MNIST test, skeletonized to one-cell strokes | 94.9 % |
-| emulator vs NumPy model | the same answer for 9,993 of 10,000 test digits; the 7 others are near-ties, with the top two scores less than one 8-bit step apart |
-| Chromium vs NumPy model | the page prints the model's answer for 199 of 200 test digits at each of 8 zoom levels from 0.75 to 3, with GPU and with software raster (`logs_agreement.txt`). The odd one is a near-tie: Chromium's convolutions don't round exactly like the emulator |
+| MNIST test, pooled to 14 × 14 | 96.7 % |
+| MNIST test, skeletonized to one-cell strokes | 95.0 % |
+| pen-written digits, 14 writers it never saw (UCI Pendigits test, drawn 10 cells tall) | 94.8 % (82.0 % when trained on MNIST alone) |
+| emulator vs NumPy model | the same answer for 9,991 of 10,000 MNIST test digits; the 9 others are near-ties, with the top two scores less than one 8-bit step apart |
+| Chromium vs NumPy model | the page prints the model's answer for all 200 MNIST test digits at each of 8 zoom levels from 0.75 to 3, with GPU and with software raster (`logs_agreement.txt`). Chromium's convolutions don't round exactly like the emulator, so a near-tie can still go either way |
 | page size | about 710 kB, all inline except the Google Fonts stylesheet |
 | time per painted cell | under 0.1 s in Chromium 156 on an Apple M4, GPU or software raster (`time_frames.py`, screenshot included) |
 
-MNIST's 60,000 training digits are split as published: 50,000 to train on and 10,000 for validation.
-Every choice made from results reads validation only: the saved epoch (`train_mlp.py`), the score scale
-(`check_mlp.py`) and the opening example (`pick_sample.py`). The 10,000 test digits are read only by
-`evaluate.py` and the Chromium checks, after the weights, the scale and the page are fixed. The numbers above come
-from one such run. The architecture, the 40 epochs, the learning-rate schedule and the augmentation are
+**Real handwriting.** MNIST was written mostly by US Census staff and students, and its 9s and 1s are
+plain strokes. [UCI Pendigits](https://archive.ics.uci.edu/dataset/81) has 10,992 digits written with a
+stylus by 44 people, kept as pen paths. `pendigits.py` draws each path onto the pad the way a mouse drag
+paints it. Replayed as real drags on the page, 200 validation digits got the same answer from the model as
+from `draw()` for 198 of them (accuracy 97.0 % against 98.0 %); the differences are cells that a line only grazes.
+Trained on MNIST alone, the network read only 82.0 % of the test writers' digits. On validation, 9s were
+mostly read as 3 (their tails curl left, which on 14 × 14 cells looks like a 3's lower bowl) and 1s as 7
+(a long upstroke). So training now fills on average 30 % of each batch with Pendigits training digits,
+given random size, slant, rotation and position. That share was set in advance, not tuned. A stylus is
+not a mouse, so the Pendigits figure measures handwriting styles more than mouse drawing.
+
+**Splits.** MNIST's 60,000 training digits are split as published: 50,000 to train on and 10,000 for
+validation. Pendigits' 30 training writers are split at random, two thirds to train on and one third
+for validation. The file is shuffled and carries no writer IDs, so the two parts share writers, and
+Pendigits validation (97 %) flatters the model. Its 14 test writers are kept apart. Every choice made from results reads
+validation only: the saved epoch (`train_mlp.py`, by MNIST clean, augmented and thin accuracy plus
+Pendigits), the score scale (`check_mlp.py`) and the opening example (`pick_sample.py`). The test digits of both sets
+are read only by `evaluate.py` and the Chromium checks, after the weights, the scale and the page are fixed. The numbers above
+come from one such run. The architecture, the 40 epochs, the learning-rate schedule and the augmentation are
 unchanged from an earlier version that trained on all 60,000 digits and saved the epoch with the best test
 accuracy. They were settled while test accuracy was visible, so the figures may still be slightly optimistic.
 That version reported 97.0 % and 95.0 %. The gap mixes the selection effect with 10,000 fewer training
@@ -123,14 +138,17 @@ Found with the probes in `probe/`, in headless Chromium with software raster unl
 
 Needs Python 3 with NumPy, SciPy, scikit-image, Pillow and Playwright (`pip install -r requirements.txt`,
 then `playwright install chromium`). MNIST comes from `mnist.pkl.gz` of
-mnielsen/neural-networks-and-deep-learning, placed in `data/`. Run everything from the repository root.
+mnielsen/neural-networks-and-deep-learning, placed in `data/`; Pendigits from `pendigits-orig.tra` and
+`pendigits-orig.tes` of the UCI download, uncompressed into `data/pendigits/`. Run everything from the
+repository root.
 
 ```
 python train_mlp.py 40 mlp.npz                 # 192 and 96 hidden units; saves the best epoch on validation
 python check_mlp.py                            # score scale (alpha.json) and emulator vs model, on validation
-python pick_sample.py 5 4151                   # the opening example (sample.json), from validation
+python pendigits.py 6,8,10,12,13               # validation: Pendigits accuracy by digit height
+python pick_sample.py 5 1364                   # the opening example (sample.json), from validation
 python build_page.py                           # site/index.html and site/test.html
-python evaluate.py 10000                       # test: model accuracy, emulator vs model
+python evaluate.py 10000                       # test: MNIST and Pendigits accuracy, emulator vs model
 python browser_check_mlp.py 200 1,1.25,2      # test: filter vs model in Chromium, by device pixel ratio
 python test_draw.py 1,1.5,2                    # real mouse strokes, Clear, the dot-matrix answer
 ```
@@ -148,7 +166,8 @@ modules from the root, so run them as `PYTHONPATH=. python probe/probe21.py`.
 | file | role |
 |---|---|
 | `train.py` | MNIST loading, 14 × 14 pooling, augmentation (also holds the earlier CNN attempt) |
-| `train_mlp.py` | the perceptron, thin-stroke augmentation, quantization-aware training |
+| `train_mlp.py` | the perceptron, thin-stroke augmentation, Pendigits in the batches, quantization-aware training |
+| `pendigits.py` | Pendigits pen paths drawn onto the pad, its splits, augmentation |
 | `compile_mlp.py` | network → filter graph, NumPy emulator of the graph, SVG writer |
 | `build_page.py` | the page: drawing rules, ratio media queries, extract and render filters |
 | `site/template.html` | page markup and styles |
@@ -174,4 +193,5 @@ modules from the root, so run them as `PYTHONPATH=. python probe/probe21.py`.
 
 ## License
 
-MIT, Fedir Yudin. MNIST by Yann LeCun, Corinna Cortes and Christopher Burges.
+MIT, Fedir Yudin. MNIST by Yann LeCun, Corinna Cortes and Christopher Burges. Pendigits by E. Alpaydin and
+F. Alimoglu, UCI Machine Learning Repository, CC BY 4.0.

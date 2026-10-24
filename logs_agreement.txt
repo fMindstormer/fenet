@@ -1,20 +1,20 @@
 browser_check_mlp.py 200 0.75,1,1.25,1.5,1.75,2,2.5,3 in Chromium 156 on an Apple M4, RASTER=gpu then RASTER=sw.
-At every ratio the one digit where the page and the model differ is test digit 65, a near-tie (8-bit scores 177 for 9, 176 for 4); the page prints 4, its label.
+The page prints the model's answer for every digit at every ratio.
 == gpu raster
-dpr 0.75: 200 digits, the page prints the model's answer for 199, the true digit for 197, something unreadable for 0; render+read median 166 ms
-dpr 1.0: 200 digits, the page prints the model's answer for 199, the true digit for 197, something unreadable for 0; render+read median 107 ms
-dpr 1.25: 200 digits, the page prints the model's answer for 199, the true digit for 197, something unreadable for 0; render+read median 170 ms
-dpr 1.5: 200 digits, the page prints the model's answer for 199, the true digit for 197, something unreadable for 0; render+read median 177 ms
-dpr 1.75: 200 digits, the page prints the model's answer for 199, the true digit for 197, something unreadable for 0; render+read median 194 ms
-dpr 2.0: 200 digits, the page prints the model's answer for 199, the true digit for 197, something unreadable for 0; render+read median 202 ms
-dpr 2.5: 200 digits, the page prints the model's answer for 199, the true digit for 197, something unreadable for 0; render+read median 254 ms
-dpr 3.0: 200 digits, the page prints the model's answer for 199, the true digit for 197, something unreadable for 0; render+read median 317 ms
+dpr 0.75: 200 digits, the page prints the model's answer for 200, the true digit for 196, something unreadable for 0; render+read median 112 ms
+dpr 1.0: 200 digits, the page prints the model's answer for 200, the true digit for 196, something unreadable for 0; render+read median 82 ms
+dpr 1.25: 200 digits, the page prints the model's answer for 200, the true digit for 196, something unreadable for 0; render+read median 142 ms
+dpr 1.5: 200 digits, the page prints the model's answer for 200, the true digit for 196, something unreadable for 0; render+read median 147 ms
+dpr 1.75: 200 digits, the page prints the model's answer for 200, the true digit for 196, something unreadable for 0; render+read median 165 ms
+dpr 2.0: 200 digits, the page prints the model's answer for 200, the true digit for 196, something unreadable for 0; render+read median 167 ms
+dpr 2.5: 200 digits, the page prints the model's answer for 200, the true digit for 196, something unreadable for 0; render+read median 187 ms
+dpr 3.0: 200 digits, the page prints the model's answer for 200, the true digit for 196, something unreadable for 0; render+read median 216 ms
 == sw raster
-dpr 0.75: 200 digits, the page prints the model's answer for 199, the true digit for 197, something unreadable for 0; render+read median 92 ms
-dpr 1.0: 200 digits, the page prints the model's answer for 199, the true digit for 197, something unreadable for 0; render+read median 77 ms
-dpr 1.25: 200 digits, the page prints the model's answer for 199, the true digit for 197, something unreadable for 0; render+read median 112 ms
-dpr 1.5: 200 digits, the page prints the model's answer for 199, the true digit for 197, something unreadable for 0; render+read median 127 ms
-dpr 1.75: 200 digits, the page prints the model's answer for 199, the true digit for 197, something unreadable for 0; render+read median 144 ms
-dpr 2.0: 200 digits, the page prints the model's answer for 199, the true digit for 197, something unreadable for 0; render+read median 159 ms
-dpr 2.5: 200 digits, the page prints the model's answer for 199, the true digit for 197, something unreadable for 0; render+read median 270 ms
-dpr 3.0: 200 digits, the page prints the model's answer for 199, the true digit for 197, something unreadable for 0; render+read median 334 ms
+dpr 0.75: 200 digits, the page prints the model's answer for 200, the true digit for 196, something unreadable for 0; render+read median 45 ms
+dpr 1.0: 200 digits, the page prints the model's answer for 200, the true digit for 196, something unreadable for 0; render+read median 49 ms
+dpr 1.25: 200 digits, the page prints the model's answer for 200, the true digit for 196, something unreadable for 0; render+read median 81 ms
+dpr 1.5: 200 digits, the page prints the model's answer for 200, the true digit for 196, something unreadable for 0; render+read median 99 ms
+dpr 1.75: 200 digits, the page prints the model's answer for 200, the true digit for 196, something unreadable for 0; render+read median 99 ms
+dpr 2.0: 200 digits, the page prints the model's answer for 200, the true digit for 196, something unreadable for 0; render+read median 100 ms
+dpr 2.5: 200 digits, the page prints the model's answer for 200, the true digit for 196, something unreadable for 0; render+read median 132 ms
+dpr 3.0: 200 digits, the page prints the model's answer for 200, the true digit for 196, something unreadable for 0; render+read median 150 ms
