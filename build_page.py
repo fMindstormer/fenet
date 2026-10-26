@@ -166,9 +166,10 @@ def page(g, test=False, facts=None):
     net = to_svg(g, "net")
     rs = ratios()
     extracts = [extract_filter(1)] + [extract_filter(d) for d in rs]
-    sample = set(sample_cells())
-    cells = "".join(f'<rect{" class=\"s\"" if i in sample else ""} x="{i % N}" y="{i // N}" width="1" height="1"/>' for i in range(N * N))
-    mirror = "".join(f'<rect class="m{" s" if i in sample else ""}" x="{i % N}" y="{i // N}" width="1" height="1"/>' for i in range(N * N))
+    cells = "".join(f'<rect x="{i % N}" y="{i // N}" width="1" height="1"/>' for i in range(N * N))
+    mirror = "".join(f'<rect class="m" x="{i % N}" y="{i // N}" width="1" height="1"/>' for i in range(N * N))
+    # the opening example: an overlay on the pad and on its mirror, after the cells so nth-child counts don't move
+    ex = '<g class="ex">' + "".join(f'<rect x="{i % N}" y="{i // N}" width="1" height="1"/>' for i in sample_cells()) + "</g>"
     # each drawn cell lights its mirror cell (rects are children 1..196 of the grid, 2..197 of the mirror)
     rules = "\n".join(f".app:has(.grid:active rect:nth-child({i}):hover) .mirror rect.m:nth-of-type({i + 1}) {{ fill: #fff; transition: fill 0s; }}"
                       for i in range(1, N * N + 1))
@@ -184,17 +185,18 @@ def page(g, test=False, facts=None):
                      f" .net {{ transform: scale({1 / d:.7f}); }} .out {{ filter: url(#{fid}) url(#render); display: block; }} .zoomnote {{ display: none; }} }}")
     tmpl = (ROOT / "site" / "template.html").read_text()
     grid = (f'<svg class="grid" viewBox="0 0 {N} {N}" width="{PAD}" height="{PAD}" shape-rendering="crispEdges" '
-            f'role="img" aria-label="Drawing pad, 14 by 14 cells">{cells}</svg>')
+            f'role="img" aria-label="Drawing pad, 14 by 14 cells">{cells}{ex}</svg>')
     # one group per filter, the first layer innermost: each layer reads the one below as a finished image
     nested = (f'<g class="mirror" filter="url(#net1)" shape-rendering="crispEdges">'
-              f'<rect class="bg" width="{N}" height="{N}" fill="#000"/>{mirror}</g>')
+              f'<rect class="bg" width="{N}" height="{N}" fill="#000"/>{mirror}{ex}</g>')
     for k in range(2, len(g.stages()) + 1):
         nested = f'<g filter="url(#net{k})">{nested}</g>'
     out = (f'<svg class="out" width="{W}" height="{H}" viewBox="0 0 {W} {H}" aria-hidden="true">'
            f'<defs>{net}{"".join(s for _, s in extracts)}{render_filter()}</defs>'
            f'<g class="net">{nested}</g></svg>')
+    from diagram import html as diagram          # imports this module, so not at the top
     html = (tmpl.replace("/*RULES*/", rules).replace("/*MEDIA*/", "\n".join(media))
-            .replace("<!--GRID-->", grid).replace("<!--OUT-->", out))
+            .replace("<!--GRID-->", grid).replace("<!--OUT-->", out).replace("<!--DIAGRAM-->", diagram()))
     for k, v in (facts or {}).items():
         html = html.replace("{{" + k + "}}", str(v))
     if test:
@@ -216,6 +218,9 @@ def main():
     from compile_mlp import fmt, positions
     j = positions(model["W1"].shape[1]).index((5, 1))          # the neuron quoted on the page
     facts["eg_bias"] = fmt(float(model["b1"][j]))
+    gif = ROOT / "site" / "fenet.gif"                  # the recording (record.py), which needs the page first
+    head = gif.read_bytes()[6:10] if gif.exists() else (640).to_bytes(2, "little") + (400).to_bytes(2, "little")
+    facts["gif_w"], facts["gif_h"] = int.from_bytes(head[:2], "little"), int.from_bytes(head[2:], "little")
     for test in (False, True):
         html, nr = page(g, test, facts)
         (ROOT / "site" / ("test.html" if test else "index.html")).write_text(html)

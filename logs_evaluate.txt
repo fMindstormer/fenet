@@ -1,0 +1,5 @@
+evaluate.py 10000 on the frozen mlp.npz (sha256 5b4e7feb185ad21fba09b0f1db1560b63e5768bd84f5343beb6975a10ca44362) and alpha.json.
+test, pooled to 14x14:            0.9665
+test, skeletonized to one cell:   0.9500
+Pendigits test writers, 10 cells: 0.9480  (3498 digits)
+emulated filter, first 10000 test digits: agrees with the model 9991, correct 9669, ties 0

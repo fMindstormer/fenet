@@ -1,20 +1,20 @@
 browser_check_mlp.py 200 0.75,1,1.25,1.5,1.75,2,2.5,3 in Chromium 156 on an Apple M4, RASTER=gpu then RASTER=sw.
 The page prints the model's answer for every digit at every ratio.
 == gpu raster
-dpr 0.75: 200 digits, the page prints the model's answer for 200, the true digit for 196, something unreadable for 0; render+read median 112 ms
-dpr 1.0: 200 digits, the page prints the model's answer for 200, the true digit for 196, something unreadable for 0; render+read median 82 ms
-dpr 1.25: 200 digits, the page prints the model's answer for 200, the true digit for 196, something unreadable for 0; render+read median 142 ms
+dpr 0.75: 200 digits, the page prints the model's answer for 200, the true digit for 196, something unreadable for 0; render+read median 139 ms
+dpr 1.0: 200 digits, the page prints the model's answer for 200, the true digit for 196, something unreadable for 0; render+read median 111 ms
+dpr 1.25: 200 digits, the page prints the model's answer for 200, the true digit for 196, something unreadable for 0; render+read median 144 ms
 dpr 1.5: 200 digits, the page prints the model's answer for 200, the true digit for 196, something unreadable for 0; render+read median 147 ms
-dpr 1.75: 200 digits, the page prints the model's answer for 200, the true digit for 196, something unreadable for 0; render+read median 165 ms
-dpr 2.0: 200 digits, the page prints the model's answer for 200, the true digit for 196, something unreadable for 0; render+read median 167 ms
-dpr 2.5: 200 digits, the page prints the model's answer for 200, the true digit for 196, something unreadable for 0; render+read median 187 ms
-dpr 3.0: 200 digits, the page prints the model's answer for 200, the true digit for 196, something unreadable for 0; render+read median 216 ms
+dpr 1.75: 200 digits, the page prints the model's answer for 200, the true digit for 196, something unreadable for 0; render+read median 198 ms
+dpr 2.0: 200 digits, the page prints the model's answer for 200, the true digit for 196, something unreadable for 0; render+read median 187 ms
+dpr 2.5: 200 digits, the page prints the model's answer for 200, the true digit for 196, something unreadable for 0; render+read median 206 ms
+dpr 3.0: 200 digits, the page prints the model's answer for 200, the true digit for 196, something unreadable for 0; render+read median 184 ms
 == sw raster
 dpr 0.75: 200 digits, the page prints the model's answer for 200, the true digit for 196, something unreadable for 0; render+read median 45 ms
 dpr 1.0: 200 digits, the page prints the model's answer for 200, the true digit for 196, something unreadable for 0; render+read median 49 ms
-dpr 1.25: 200 digits, the page prints the model's answer for 200, the true digit for 196, something unreadable for 0; render+read median 81 ms
-dpr 1.5: 200 digits, the page prints the model's answer for 200, the true digit for 196, something unreadable for 0; render+read median 99 ms
+dpr 1.25: 200 digits, the page prints the model's answer for 200, the true digit for 196, something unreadable for 0; render+read median 66 ms
+dpr 1.5: 200 digits, the page prints the model's answer for 200, the true digit for 196, something unreadable for 0; render+read median 66 ms
 dpr 1.75: 200 digits, the page prints the model's answer for 200, the true digit for 196, something unreadable for 0; render+read median 99 ms
-dpr 2.0: 200 digits, the page prints the model's answer for 200, the true digit for 196, something unreadable for 0; render+read median 100 ms
-dpr 2.5: 200 digits, the page prints the model's answer for 200, the true digit for 196, something unreadable for 0; render+read median 132 ms
+dpr 2.0: 200 digits, the page prints the model's answer for 200, the true digit for 196, something unreadable for 0; render+read median 99 ms
+dpr 2.5: 200 digits, the page prints the model's answer for 200, the true digit for 196, something unreadable for 0; render+read median 131 ms
 dpr 3.0: 200 digits, the page prints the model's answer for 200, the true digit for 196, something unreadable for 0; render+read median 150 ms

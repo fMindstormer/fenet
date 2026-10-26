@@ -1,17 +1,10 @@
-"""Draw with real mouse events in Chromium and read the dot-matrix answer off the screen."""
+"""Draw with real mouse events in Chromium and read the dot-matrix answer off the screen, as a first visitor
+would: the first digit straight over the opening example, then Clear before each of the others."""
 import os, sys, time
 import numpy as np
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-from readout import launch, read
-
-STROKES = {  # cell paths (col, row), drawn as press-drag-release
-    "7": [[(3, 3), (10, 3), (6, 12)]],
-    "1": [[(7, 2), (7, 12)]],
-    "0": [[(7, 2), (4, 4), (3, 8), (5, 11), (8, 11), (10, 8), (10, 4), (7, 2)]],
-    "4": [[(8, 2), (3, 8), (11, 8)], [(9, 4), (9, 12)]],
-    "2": [[(4, 4), (6, 2), (9, 3), (9, 6), (4, 11), (11, 11)]],
-}
+from readout import STROKES, launch, read
 
 def stroke(pg, gbox, path, steps=6):
     cell = gbox["width"] / 14
@@ -40,14 +33,17 @@ with sync_playwright() as p:
         if ONLY_OPEN:
             print(f"dpr {dpr}: {res[0]}", flush=True); pg.close(); continue
         clear = pg.locator(".clear")
-        clear.click(); pg.wait_for_timeout(100)
-        res.append(f"after Clear: {read(pg, box, mark, dim)}")
-        for want, paths in STROKES.items():
+        for k, (want, paths) in enumerate(STROKES.items()):
+            if k:                                     # a first visitor draws straight over the example; Clear after that
+                clear.click(); pg.wait_for_timeout(50)
             for path in paths:
                 stroke(pg, gbox, path)
             t0 = time.time(); got = read(pg, box, mark, dim); dt = time.time() - t0
-            res.append(f"drew {want}: read {got} ({1000 * dt:.0f} ms to screenshot)")
-            clear.click(); pg.wait_for_timeout(50)
+            res.append(f"drew {want}{' over the example' if k == 0 else ''}: read {got} ({1000 * dt:.0f} ms to screenshot)")
+            if k == 0:
+                shown = pg.evaluate("[...document.querySelectorAll('.ex')].map(e => getComputedStyle(e).display)")
+                res.append("example after the first stroke: " + ("gone" if set(shown) == {"none"} else f"still shown {shown}"))
+        clear.click(); pg.wait_for_timeout(100)
         res.append(f"after Clear: {read(pg, box, mark, dim)}")
         print(f"dpr {dpr}: " + "; ".join(res), flush=True)
         pg.close()

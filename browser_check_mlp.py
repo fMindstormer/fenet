@@ -21,7 +21,7 @@ with sync_playwright() as p:
     for dpr in dprs:
         pg = b.new_page(viewport={"width": 1100, "height": 900}, device_scale_factor=dpr)
         pg.goto(Path("site/test.html").resolve().as_uri())
-        pg.add_style_tag(content=".mirror rect.m { transition: none !important; }")
+        pg.add_style_tag(content=".mirror rect.m { transition: none !important; } .ex { display: none !important; }")
         pg.wait_for_timeout(1000)
         box = pg.locator(".out").bounding_box()
         agree = correct = bad = 0

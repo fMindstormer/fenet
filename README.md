@@ -1,10 +1,39 @@
 # fenet
 
-A handwritten-digit recognizer that runs inside SVG filters. The page has no JavaScript: CSS paints the
-drawing, and a chain of filter primitives (mostly `feConvolveMatrix`) evaluates a small neural network
-on it and prints the answer.
+Draw a digit and SVG filters read it. The page has no JavaScript: CSS records the drawing, and a chain
+of 320 filter primitives, mostly `feConvolveMatrix`, runs a small neural network on it.
 
-Live page: https://fmindstormer.github.io/fenet/
+**[Try it](https://fmindstormer.github.io/fenet/)**: hold the mouse button and draw a digit in box 1.
+
+![A first visit: the opening example, a 7 drawn straight over it and read as 7, Clear, a 4 read as 4, Clear, a 2 read as 2](site/fenet.gif)
+
+## Where it works
+
+- **Chrome, Edge, Brave and Arc**, on a computer or an Android phone. Firefox and Safari place filter
+  pixels differently and would misread, so they get the recording above instead of the pad (every
+  browser on iPhone and iPad uses Safari's engine).
+- **A mouse or trackpad.** On a touchscreen, dragging doesn't move `:hover`, so cells are tapped one at
+  a time; the page says so on touchscreens.
+- **Most zoom levels**: 76 device pixel ratios from 0.5 to 5, which covers the browser's preset zoom
+  levels on common screens. Others hide the reading and ask for 100 %.
+- **Shown unscaled.** A frame that scales the page (the claude.ai artifact viewer shows pages at 90 %)
+  hides the scale from the media queries, and the network reads an empty pad.
+
+## One prediction
+
+The opening example, as the filters see it. The values are the filter graph's own, from the emulator:
+
+![The drawing, its pixels after threshold and blur, layer 1, layer 2, the ten scores, and the answer 5](site/prediction.svg)
+
+1. **Strokes**: 14 × 14 cells on the pad.
+2. **Pixels**: 196 `:has()` rules copy the cells into screen pixels; a threshold and a 3 × 3 blur follow.
+3. **Layer 1**: 192 neurons, each one `feConvolveMatrix` with 196 weights over the whole image plus a
+   bias, clamped to 0…1, writing one pixel of this 14 × 14 image (the faint dots mark the neurons).
+4. **Layer 2**: 96 neurons, the same way over layer 1's image.
+5. **Scores**: ten more neurons, one per digit.
+6. **Answer**: `feMorphology` finds the highest score, and a second filter prints it as a dot-matrix digit.
+
+The detail follows.
 
 ```
 drawing pad (CSS :active + :hover, transition delay of 1,000,000 s)
@@ -24,8 +53,10 @@ dot-matrix digit + ten score bars, coloured from the page's theme
 **Drawing.** `.grid:active rect:hover` turns a cell dark with `transition: fill 0s`. Every other state
 of a cell has `transition: fill 0s 1000000s`, so when the pointer leaves, the cell waits a million
 seconds before going back. Clear is a `<label>` for a radio button: while it is pressed every cell
-gets `transition: none` and snaps back. The opening example is drawn by a rule that stops matching once
-the radio is checked, and a radio stays checked.
+gets `transition: none` and snaps back. The opening example is an overlay on the pad (and on its mirror)
+shown only while the radio is unchecked and the pad isn't pressed. The pad sits in a second `<label>` for
+the same radio, so the first press hides the example and the click that ends it checks the radio, which
+stays checked. Before that, a first stroke landed on top of the example: a 7 drawn there was read as 5.
 
 **Mirror.** For each of the 196 cells, a rule like
 `.app:has(.grid:active rect:nth-child(37):hover) .mirror rect.m:nth-of-type(38)` paints the matching
@@ -136,30 +167,45 @@ Found with the probes in `probe/`, in headless Chromium with software raster unl
 
 ## Rebuild
 
-Needs Python 3 with NumPy, SciPy, scikit-image, Pillow and Playwright (`pip install -r requirements.txt`,
-then `playwright install chromium`). MNIST comes from `mnist.pkl.gz` of
-mnielsen/neural-networks-and-deep-learning, placed in `data/`; Pendigits from `pendigits-orig.tra` and
-`pendigits-orig.tes` of the UCI download, uncompressed into `data/pendigits/`. Run everything from the
-repository root.
+[Release v1.0.0](https://github.com/fMindstormer/fenet/releases/tag/v1.0.0) freezes the model and its
+evaluation: the weights, the score scale, the built page, the recording, the diagram and the logs.
+
+Needs Python 3.13 with the exact versions in `requirements.txt` (`pip install -r requirements.txt`, then
+`playwright install chromium`). The data isn't in the repository:
+
+| file | from | sha256 |
+|---|---|---|
+| `data/mnist.pkl.gz` | `data/mnist.pkl.gz` of mnielsen/neural-networks-and-deep-learning | `f11bb9e41d6c1b6c124aa38fd605497bdcfe2ee08cf7c2bb5a41ab5d759e1416` |
+| `data/pendigits/pendigits-orig.tra` | [UCI dataset 81](https://archive.ics.uci.edu/dataset/81), uncompressed from the `.Z` file | `a66225d68d7d68591e62944df1ad33b3f5aa608e2df2505844b41f5568a80da4` |
+| `data/pendigits/pendigits-orig.tes` | the same | `ddb1c19e277a56c7ffe682cc024d6ab73696f9adcc1643ef9ed5aa753007e081` |
+
+Run everything from the repository root:
 
 ```
 python train_mlp.py 40 mlp.npz                 # 192 and 96 hidden units; saves the best epoch on validation
 python check_mlp.py                            # score scale (alpha.json) and emulator vs model, on validation
 python pendigits.py 6,8,10,12,13               # validation: Pendigits accuracy by digit height
 python pick_sample.py 5 1364                   # the opening example (sample.json), from validation
+python diagram.py                              # site/prediction.svg
 python build_page.py                           # site/index.html and site/test.html
+python record.py && python build_page.py       # site/fenet.gif; the page reads its size
 python evaluate.py 10000                       # test: MNIST and Pendigits accuracy, emulator vs model
 python browser_check_mlp.py 200 1,1.25,2      # test: filter vs model in Chromium, by device pixel ratio
-python test_draw.py 1,1.5,2                    # real mouse strokes, Clear, the dot-matrix answer
+python test_draw.py 1,1.5,2                    # a first visit: mouse strokes over the example, Clear, more digits
 ```
+
+With these versions, training from scratch reproduces `mlp.npz` byte for byte (sha256
+`5b4e7feb185ad21fba09b0f1db1560b63e5768bd84f5343beb6975a10ca44362`), and with it `alpha.json` and
+`sample.json`. `train.log` matches apart from the epoch timings. Checked on an Apple M4; other CPUs
+may round differently. `logs_evaluate.txt` and `logs_agreement.txt` are the frozen test results.
 
 The Chromium checks run full Chromium, which rasterizes on the GPU where there is one, as desktop
 browsers do; `RASTER=sw` forces software raster.
 
-`site/test.html` is the standalone page; GitHub Pages builds and serves it (`.github/workflows/pages.yml`).
-`site/index.html` is the same page without a document skeleton, for hosts that add their own.
-`build_page.py` and `test_draw.py` run without MNIST. The scripts in `probe/` and `attic/` import
-modules from the root, so run them as `PYTHONPATH=. python probe/probe21.py`.
+`site/test.html` is the standalone page; GitHub Pages builds and serves it with the recording
+(`.github/workflows/pages.yml`). `site/index.html` is the same page without a document skeleton, for
+hosts that add their own. `build_page.py` and `test_draw.py` run without MNIST. The scripts in `probe/`
+and `attic/` import modules from the root, so run them as `PYTHONPATH=. python probe/probe21.py`.
 
 ## Files
 
@@ -174,21 +220,24 @@ modules from the root, so run them as `PYTHONPATH=. python probe/probe21.py`.
 | `check_mlp.py` | score scale from validation, emulator check |
 | `evaluate.py` | the test figures, run once the model and page are fixed |
 | `eval_thin.py`, `compare_models.py` | accuracy on validation: thin strokes, model against model |
-| `browser_check_mlp.py`, `test_draw.py` | Chromium checks |
+| `browser_check_mlp.py`, `test_draw.py` | Chromium checks; `test_draw.py` draws as a first visitor would, straight over the example |
+| `record.py`, `site/fenet.gif` | the recording: real mouse strokes on the real page |
+| `diagram.py`, `site/prediction.svg` | one prediction, step by step, from the emulator; the page has the same panels inline |
 | `probe/` | the experiments behind the facts above, and screenshot helpers |
 | `attic/` | the earlier CNN attempt, stopped by the 256-tap limit |
 | `mlp.npz`, `alpha.json`, `sample.json` | trained weights, score scale, opening example |
 | `facts.json` | accuracy and agreement figures quoted on the page |
-| `train.log`, `logs_agreement.txt` | training run and the Chromium agreement run |
+| `train.log`, `logs_evaluate.txt`, `logs_agreement.txt` | the training run, the test evaluation and the Chromium agreement run |
 
 ## Limits
 
-- Chromium only. Other engines place filter pixels differently and may misread.
-- The page must be shown unscaled. A frame scaled by its parent (the claude.ai artifact viewer shows pages
-  at 90 %) draws it at a scale the media queries can't see, and the network reads an empty pad.
-- Zoom: any device pixel ratio of 1, the 65 ratios above 1 listed by `ratios()` in `build_page.py`, and ten common ratios below 1.
-  Other zoom levels show a note asking for 100 %.
-- Touch: dragging does not move `:hover`, so on a touchscreen cells are tapped one at a time.
+Besides the browsers, input and zoom levels under [Where it works](#where-it-works):
+
+- The zoom levels are a device pixel ratio of 1, the 65 ratios above 1 listed by `ratios()` in
+  `build_page.py`, and ten common ratios below 1.
+- The browser check is by CSS feature: `-moz-appearance` (Firefox), `hanging-punctuation` (Safari) and
+  missing `:has()`. It was tested in Playwright's Chromium and WebKit; Firefox wouldn't start in the
+  test environment, so its branch is untested.
 - Drawing only adds ink; Clear starts over.
 
 ## License

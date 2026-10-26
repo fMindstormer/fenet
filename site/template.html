@@ -55,9 +55,13 @@ h1 { font-weight: 800; font-size: clamp(44px, 9vw, 76px); line-height: 0.95; let
 .grid rect { fill: var(--cell); stroke: var(--dropout-soft); stroke-width: 0.045; transition: fill 0s 1000000s; }
 .grid:active rect:hover { fill: var(--ink); transition: fill 0s; }
 .mirror rect.m { fill: #000; transition: fill 0s 1000000s; }
-/* the opening example, until Clear is pressed for the first time (the radio stays checked) */
-:where(.app:not(:has(.cl:checked))) .grid rect.s { fill: var(--ink); }
-:where(.app:not(:has(.cl:checked))) .mirror rect.m.s { fill: #fff; }
+/* the opening example lies on top of the pad and its mirror until the pad is first pressed: it hides while
+   the pad is pressed, and the click checks the radio (the pad sits in a label for it, as Clear does) */
+.ex { display: none; pointer-events: none; }
+:where(.app:not(:has(.cl:checked)):not(:has(.pad:active))) .ex { display: inline; }
+.grid .ex rect { fill: var(--ink); }
+.mirror .ex rect { fill: #fff; }
+.pad { display: block; width: fit-content; }
 /*RULES*/
 .app:has(.clear:active) .grid rect { fill: var(--cell); transition: none; }
 .app:has(.clear:active) .mirror rect.m { fill: #000; transition: none; }
@@ -70,6 +74,21 @@ h1 { font-weight: 800; font-size: clamp(44px, 9vw, 76px); line-height: 0.95; let
 .clear:active { background: var(--dropout-soft); }
 .cl:focus-visible + .clear { outline: 2px solid var(--mark); outline-offset: 2px; }
 .hint { font-size: 13px; line-height: 1.4; color: var(--muted); }
+.hint.touch { display: none; }
+/* touchscreens: dragging doesn't move :hover, so say so before anyone drags */
+@media (hover: none) and (pointer: coarse) {
+  .hint.mouse { display: none; }
+  .hint.touch { display: block; padding: 8px 10px; border: 1.5px solid var(--mark); color: var(--ink); }
+}
+.compat { margin: 10px 0 0; font-size: 14px; color: var(--muted); }
+.compat a, .engine a { color: inherit; }
+/* other engines place filter pixels differently and would misread: show the recording instead of the pad */
+.engine { display: none; max-width: 640px; border: 2px solid var(--mark); background: var(--sheet); padding: 16px 20px; }
+.engine p { margin: 0 0 12px; }
+.engine img { display: block; max-width: 100%; height: auto; border: 1.5px solid var(--dropout); }
+@supports (-moz-appearance: none) { .engine { display: block; } .sheet { display: none; } }
+@supports (hanging-punctuation: first) { .engine { display: block; } .sheet { display: none; } }
+@supports not selector(:has(a)) { .engine { display: block; } .sheet { display: none; } }
 
 /* the reading */
 .out { display: block; will-change: transform; filter: url(#x1) url(#render); }
@@ -83,6 +102,15 @@ h1 { font-weight: 800; font-size: clamp(44px, 9vw, 76px); line-height: 0.95; let
 .caption { margin: 0; font-size: 13px; line-height: 1.4; color: var(--muted); }
 .zoomnote { display: none; margin: 0; padding: 10px 12px; border: 1.5px solid var(--mark); color: var(--ink); font-size: 14px; }
 /*MEDIA*/
+
+/* one reading, step by step */
+.flow { margin: 0; padding: 0; list-style: none; counter-reset: f; display: grid; grid-template-columns: repeat(auto-fill, minmax(136px, 1fr)); gap: 18px 20px; }
+.flow li { counter-increment: f; display: grid; gap: 8px; align-content: start; }
+.flow svg { display: block; width: 100%; max-width: 112px; height: auto; }
+.flow p { margin: 0; font-size: 13px; line-height: 1.45; color: var(--muted); text-wrap: pretty; }
+.flow p strong { display: block; color: var(--ink); font-weight: 600; }
+.flow p strong::before { content: counter(f) ". "; color: var(--dropout); font-family: var(--font-data); }
+.flow code { font-size: 11.5px; }
 
 /* instructions */
 .back { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 28px 40px; }
@@ -111,16 +139,23 @@ footer a { color: inherit; }
   <header>
     <div class="formline"><span>Handwriting sample · 14 × 14 cells</span><span>No JavaScript on this page</span></div>
     <h1>fenet</h1>
-    <p class="lede">A neural network that runs inside an SVG filter. Write a digit in box 1. Box 2 is drawn by a chain of {{primitives}} filter primitives, mostly <em>feConvolveMatrix</em>, that read your strokes and print what they see.</p>
+    <p class="lede">A neural network that runs inside SVG filters: draw a digit in box 1, and a chain of {{primitives}} filter primitives reads it in box 2.</p>
+    <p class="compat">Works in Chrome, Edge, Brave and Arc, best with a mouse. Other browsers, and anyone curious first: <a href="fenet.gif">watch the recording</a>.</p>
   </header>
+
+  <section class="engine" aria-label="This browser isn't supported">
+    <p><strong>fenet needs Chrome, Edge, Brave or Arc</strong> on a computer or an Android phone (on iPhone and iPad every browser uses Safari's engine). This browser places SVG filter pixels differently, so the network would misread your drawing. Here is a recording of it in Chrome:</p>
+    <img src="fenet.gif" loading="lazy" width="{{gif_w}}" height="{{gif_h}}" alt="Drawing a 7 on the pad, the filter reading 7; Clear; drawing a 4, read as 4; Clear; drawing a 2, read as 2.">
+  </section>
 
   <section class="sheet" aria-label="Write a digit and see the reading">
     <div class="field">
       <div class="fieldhead"><span class="fieldno">1</span>Write one digit</div>
-      <!--GRID-->
+      <label class="pad" for="cleared"><!--GRID--></label>
       <div class="controls">
         <input class="cl" type="radio" id="cleared" name="cleared" aria-label="Clear the drawing"><label class="clear" for="cleared">Clear</label>
-        <span class="hint">Hold the mouse button and drag. On a touchscreen, tap the cells.</span>
+        <span class="hint mouse">Hold the mouse button and draw a digit.</span>
+        <span class="hint touch">On a touchscreen, tap the cells one at a time: dragging doesn't draw.</span>
       </div>
     </div>
     <div class="field read">
@@ -130,6 +165,11 @@ footer a { color: inherit; }
       <p class="caption">Bars: the network's score for each digit. The highest wins.</p>
       <p class="zoomnote">The filter has to know the size of a screen pixel, and this zoom level isn't on its list. Set the browser zoom to 100% to see the reading.</p>
     </div>
+  </section>
+
+  <section class="explain" aria-labelledby="explain-h">
+    <h2 id="explain-h">One reading, step by step: the opening 5</h2>
+    <!--DIAGRAM-->
   </section>
 
   <section class="back">

@@ -10,7 +10,7 @@ with sync_playwright() as p:
     pg.goto(Path("site/test.html").resolve().as_uri())
     pg.add_style_tag(content=f".out{{filter:{filt} !important}}")
     pg.wait_for_timeout(800)
-    print(pg.evaluate("() => [getComputedStyle(document.querySelector('.mirror rect.m.s')).fill, getComputedStyle(document.querySelector('.out')).filter, document.querySelectorAll('.mirror rect.m.s').length]"))
+    print(pg.evaluate("() => [getComputedStyle(document.querySelector('.mirror .ex rect')).fill, getComputedStyle(document.querySelector('.out')).filter, document.querySelectorAll('.mirror .ex rect').length]"))
     box = pg.locator(".out").bounding_box()
     im = np.asarray(Image.open(io.BytesIO(pg.screenshot())).convert("L")).astype(int)
     ox, oy = int(box["x"] * dpr), int(box["y"] * dpr)

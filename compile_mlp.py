@@ -120,7 +120,8 @@ def build(m, alpha):
 
 
 # ------------------------------------------------------------------ emulator
-def emulate(g, x, quant=True):
+def emulate(g, x, quant=True, trace=None):
+    """Run the graph on a 14x14 drawing. trace, a dict, receives every result as (value, alpha) images."""
     S = N + 4
     src = np.zeros((S, S)); src[:N, :N] = x
     alpha = np.zeros((S, S)); alpha[:N, :N] = 1
@@ -194,6 +195,8 @@ def emulate(g, x, quant=True):
         else:
             raise ValueError(kind)
         img[name] = (np.where(mask, v, 0.0), np.where(mask, a, 0.0))
+    if trace is not None:
+        trace.update(img)
     out = img[g.flags][0]
     winners = [k for k, (sx, sy) in enumerate(SLOTS) if out[sy, sx] > 0.5]
     scores = [img[g.scores][0][sy, sx] for sx, sy in SLOTS]
