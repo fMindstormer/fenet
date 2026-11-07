@@ -1,11 +1,10 @@
 """Pick the page's opening example: a thin, mouse-like stroke the model reads with a wide margin."""
 import json, sys
 import numpy as np
-import train as T
-from train_mlp import MLP, blur
-from eval_thin import thin28
+import fenet.train as T
+from fenet.mlp import MLP, blur, thin28
 _, (Xv, yv), _ = T.load()
-net = MLP(); net.p = dict(np.load("mlp.npz"))
+net = MLP(); net.p = dict(np.load("model/mlp.npz"))
 want = int(sys.argv[1]); pick = int(sys.argv[2]) if len(sys.argv) > 2 else -1
 cands = []
 for i in np.where(yv == want)[0][:400]:
@@ -20,5 +19,5 @@ for m, i, g in cands[:4]:
 if pick >= 0:
     g = thin28(Xv[pick])
     json.dump({"source": f"MNIST validation image {pick}, skeletonized and pooled to 14x14", "label": want,
-               "cells": [int(v) for v in g.ravel()]}, open("sample.json", "w"))
+               "cells": [int(v) for v in g.ravel()]}, open("model/sample.json", "w"))
     print("saved", pick)

@@ -28,7 +28,7 @@ jobs:
         with:
           python-version: "3.13"
       - run: pip install numpy==2.5.4 scipy==1.18.1
-      - run: python build_page.py
+      - run: python -m scripts.build_page
       - run: mkdir _site && cp site/test.html _site/index.html && cp site/fenet.gif _site/
       - uses: actions/upload-pages-artifact@v3
       - id: deployment

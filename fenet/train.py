@@ -10,7 +10,7 @@ Network (every layer is one feConvolveMatrix per output channel in the browser):
 clip01 is what a filter primitive does to its result anyway (a ReLU capped at 1). Activations are
 rounded to 8 bits in the forward pass (straight-through gradients), as a browser may store them.
 
-    python train.py            writes model.npz and prints validation accuracies
+    python -m fenet.train      writes model.npz and prints validation accuracies
 """
 from __future__ import annotations
 

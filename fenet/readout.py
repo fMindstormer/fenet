@@ -3,7 +3,7 @@ import io
 import os
 import numpy as np
 from PIL import Image
-from build_page import FONT, GX, GY, PITCH
+from fenet.layout import FONT, GX, GY, PITCH
 
 MARK = np.array([0xd1, 0x36, 0x2b])     # --mark, light theme
 DIM = np.array([0x6f, 0x9b, 0xc8])      # --dropout, light theme

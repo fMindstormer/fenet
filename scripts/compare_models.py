@@ -1,9 +1,8 @@
-"""Compare trained models on validation digits: python compare_models.py a.npz b.npz ..."""
+"""Compare trained models on validation digits: python -m scripts.compare_models a.npz b.npz ..."""
 import sys
 import numpy as np
-import train as T
-from train_mlp import MLP, blur, thin_augment
-from eval_thin import thin28
+import fenet.train as T
+from fenet.mlp import MLP, blur, thin28, thin_augment
 _, (Xv, yv), _ = T.load()
 clean = np.stack([T.to_grid(Xv[i], 0.3) for i in range(len(Xv))])
 sk = np.stack([thin28(Xv[i]) for i in range(len(Xv))])

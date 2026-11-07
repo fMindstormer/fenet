@@ -107,13 +107,13 @@ dark theme.
 | MNIST test, skeletonized to one-cell strokes | 95.0 % |
 | pen-written digits, 14 writers it never saw (UCI Pendigits test, drawn 10 cells tall) | 94.8 % (82.0 % when trained on MNIST alone) |
 | emulator vs NumPy model | the same answer for 9,991 of 10,000 MNIST test digits; the 9 others are near-ties, with the top two scores less than one 8-bit step apart |
-| Chromium vs NumPy model | the page prints the model's answer for all 200 MNIST test digits at each of 8 zoom levels from 0.75 to 3, with GPU and with software raster (`logs_agreement.txt`). Chromium's convolutions don't round exactly like the emulator, so a near-tie can still go either way |
+| Chromium vs NumPy model | the page prints the model's answer for all 200 MNIST test digits at each of 8 zoom levels from 0.75 to 3, with GPU and with software raster ([`results/logs_agreement.txt`](results/logs_agreement.txt)). Chromium's convolutions don't round exactly like the emulator, so a near-tie can still go either way |
 | page size | about 710 kB, all inline except the Google Fonts stylesheet |
-| time per painted cell | under 0.1 s in Chromium 156 on an Apple M4, GPU or software raster (`time_frames.py`, screenshot included) |
+| time per painted cell | under 0.1 s in Chromium 156 on an Apple M4, GPU or software raster (`scripts/time_frames.py`, screenshot included) |
 
 **Real handwriting.** MNIST was written mostly by US Census staff and students, and its 9s and 1s are
 plain strokes. [UCI Pendigits](https://archive.ics.uci.edu/dataset/81) has 10,992 digits written with a
-stylus by 44 people, kept as pen paths. `pendigits.py` draws each path onto the pad the way a mouse drag
+stylus by 44 people, kept as pen paths. `fenet/pendigits.py` draws each path onto the pad the way a mouse drag
 paints it. Replayed as real drags on the page, 200 validation digits got the same answer from the model as
 from `draw()` for 198 of them (accuracy 97.0 % against 98.0 %); the differences are cells that a line only grazes.
 Trained on MNIST alone, the network read only 82.0 % of the test writers' digits. On validation, 9s were
@@ -126,9 +126,9 @@ not a mouse, so the Pendigits figure measures handwriting styles more than mouse
 validation. Pendigits' 30 training writers are split at random, two thirds to train on and one third
 for validation. The file is shuffled and carries no writer IDs, so the two parts share writers, and
 Pendigits validation (97 %) flatters the model. Its 14 test writers are kept apart. Every choice made from results reads
-validation only: the saved epoch (`train_mlp.py`, by MNIST clean, augmented and thin accuracy plus
-Pendigits), the score scale (`check_mlp.py`) and the opening example (`pick_sample.py`). The test digits of both sets
-are read only by `evaluate.py` and the Chromium checks, after the weights, the scale and the page are fixed. The numbers above
+validation only: the saved epoch (`scripts/train_mlp.py`, by MNIST clean, augmented and thin accuracy plus
+Pendigits), the score scale (`scripts/check_mlp.py`) and the opening example (`scripts/pick_sample.py`). The test digits of both sets
+are read only by `scripts/evaluate.py` and the Chromium checks, after the weights, the scale and the page are fixed. The numbers above
 come from one such run. The architecture, the 40 epochs, the learning-rate schedule and the augmentation are
 unchanged from an earlier version that trained on all 60,000 digits and saved the epoch with the best test
 accuracy. They were settled while test accuracy was visible, so the figures may still be slightly optimistic.
@@ -137,11 +137,14 @@ digits, and this run cannot separate the two.
 
 ## Chromium facts it depends on
 
-Found with the probes in `probe/`, in headless Chromium with software raster unless GPU raster is named
+Found with the probes in `scripts/probe/`, in headless Chromium with software raster unless GPU raster is named
 (`probe28.py`: Chromium 156, Apple M4):
 
 - `feConvolveMatrix` works in device pixels and ignores `kernelUnitLength`.
-- A kernel with more than 256 taps is ignored and the result is transparent. 196 fits.
+- A kernel with more than 256 taps is ignored and the result is transparent. 196 fits. This stopped an
+  earlier attempt, a small CNN laid out as tiles, whose second layer needed bigger kernels
+  ([`attic/` at b09e7b2](https://github.com/fMindstormer/fenet/tree/b09e7b2/attic), its last commit;
+  the CNN's training code is still in `fenet/train.py`).
 - `edgeMode="none"` reads zero outside the input; with `preserveAlpha` the result keeps the source alpha.
 - Results are stored as 8-bit premultiplied colour between primitives. Training rounds every activation
   the same way (straight-through gradients).
@@ -179,62 +182,63 @@ Needs Python 3.13 with the exact versions in `requirements.txt` (`pip install -r
 | `data/pendigits/pendigits-orig.tra` | [UCI dataset 81](https://archive.ics.uci.edu/dataset/81), uncompressed from the `.Z` file | `a66225d68d7d68591e62944df1ad33b3f5aa608e2df2505844b41f5568a80da4` |
 | `data/pendigits/pendigits-orig.tes` | the same | `ddb1c19e277a56c7ffe682cc024d6ab73696f9adcc1643ef9ed5aa753007e081` |
 
-Run everything from the repository root:
+Run everything from the repository root, scripts as modules so they find the `fenet` package:
 
 ```
-python train_mlp.py 40 mlp.npz                 # 192 and 96 hidden units; saves the best epoch on validation
-python check_mlp.py                            # score scale (alpha.json) and emulator vs model, on validation
-python pendigits.py 6,8,10,12,13               # validation: Pendigits accuracy by digit height
-python pick_sample.py 5 1364                   # the opening example (sample.json), from validation
-python diagram.py                              # site/prediction.svg
-python build_page.py                           # site/index.html and site/test.html
-python record.py && python build_page.py       # site/fenet.gif; the page reads its size
-python evaluate.py 10000                       # test: MNIST and Pendigits accuracy, emulator vs model
-python browser_check_mlp.py 200 1,1.25,2      # test: filter vs model in Chromium, by device pixel ratio
-python test_draw.py 1,1.5,2                    # a first visit: mouse strokes over the example, Clear, more digits
+python -m scripts.train_mlp 40 > results/train.log    # 192 and 96 hidden units; saves the best epoch on validation
+python -m scripts.check_mlp                           # score scale (model/alpha.json), emulator vs model, on validation
+python -m fenet.pendigits 6,8,10,12,13                # validation: Pendigits accuracy by digit height
+python -m scripts.pick_sample 5 1364                  # the opening example (model/sample.json), from validation
+python -m scripts.diagram                             # site/prediction.svg
+python -m scripts.build_page                          # site/index.html and site/test.html
+python -m scripts.record && python -m scripts.build_page    # site/fenet.gif; the page reads its size
+python -m scripts.evaluate 10000                      # test: MNIST and Pendigits accuracy, emulator vs model
+python -m scripts.browser_check_mlp 200 1,1.25,2      # test: filter vs model in Chromium, by device pixel ratio
+python -m scripts.test_draw 1,1.5,2                   # a first visit: mouse strokes over the example, Clear, more digits
 ```
 
-With these versions, training from scratch reproduces `mlp.npz` byte for byte (sha256
+With these versions, training from scratch reproduces `model/mlp.npz` byte for byte (sha256
 `5b4e7feb185ad21fba09b0f1db1560b63e5768bd84f5343beb6975a10ca44362`), and with it `alpha.json` and
-`sample.json`. `train.log` matches apart from the epoch timings. Checked on an Apple M4; other CPUs
-may round differently. `logs_evaluate.txt` and `logs_agreement.txt` are the frozen test results.
+`sample.json`. `results/train.log` matches apart from the epoch timings and the output path. Checked on an Apple M4; other CPUs
+may round differently. `results/logs_evaluate.txt` and `results/logs_agreement.txt` are the frozen test results.
 
 The Chromium checks run full Chromium, which rasterizes on the GPU where there is one, as desktop
 browsers do; `RASTER=sw` forces software raster.
 
 `site/test.html` is the standalone page; GitHub Pages builds and serves it with the recording
 (`.github/workflows/pages.yml`). `site/index.html` is the same page without a document skeleton, for
-hosts that add their own. `build_page.py` and `test_draw.py` run without MNIST. The scripts in `probe/`
-and `attic/` import modules from the root, so run them as `PYTHONPATH=. python probe/probe21.py`.
+hosts that add their own. `build_page` and `test_draw` run without MNIST. The probes run the same way:
+`python -m scripts.probe.probe21`.
 
 ## Files
 
-| file | role |
+| path | role |
 |---|---|
-| `train.py` | MNIST loading, 14 × 14 pooling, augmentation (also holds the earlier CNN attempt) |
-| `train_mlp.py` | the perceptron, thin-stroke augmentation, Pendigits in the batches, quantization-aware training |
-| `pendigits.py` | Pendigits pen paths drawn onto the pad, its splits, augmentation |
-| `compile_mlp.py` | network → filter graph, NumPy emulator of the graph, SVG writer |
-| `build_page.py` | the page: drawing rules, ratio media queries, extract and render filters |
-| `site/template.html` | page markup and styles |
-| `check_mlp.py` | score scale from validation, emulator check |
-| `evaluate.py` | the test figures, run once the model and page are fixed |
-| `eval_thin.py`, `compare_models.py` | accuracy on validation: thin strokes, model against model |
-| `browser_check_mlp.py`, `test_draw.py` | Chromium checks; `test_draw.py` draws as a first visitor would, straight over the example |
-| `record.py`, `site/fenet.gif` | the recording: real mouse strokes on the real page |
-| `diagram.py`, `site/prediction.svg` | one prediction, step by step, from the emulator; the page has the same panels inline |
-| `probe/` | the experiments behind the facts above, and screenshot helpers |
-| `attic/` | the earlier CNN attempt, stopped by the 256-tap limit |
-| `mlp.npz`, `alpha.json`, `sample.json` | trained weights, score scale, opening example |
-| `facts.json` | accuracy and agreement figures quoted on the page |
-| `train.log`, `logs_evaluate.txt`, `logs_agreement.txt` | the training run, the test evaluation and the Chromium agreement run |
+| `fenet/` | the library the scripts share |
+| `fenet/train.py` | MNIST loading, 14 × 14 pooling, augmentation (and the earlier CNN attempt) |
+| `fenet/mlp.py` | the perceptron, its 8-bit forward pass, the 3 × 3 blur, thin-stroke augmentation |
+| `fenet/pendigits.py` | Pendigits pen paths drawn onto the pad, its splits, augmentation |
+| `fenet/compile_mlp.py` | network → filter graph, NumPy emulator of the graph, SVG writer |
+| `fenet/layout.py`, `fenet/readout.py` | the readout's size and dot-matrix font; reading the answer off a screenshot |
+| `scripts/` | everything you run, in the order of [Rebuild](#rebuild) |
+| `scripts/train_mlp.py` | training: Pendigits in the batches, quantization-aware, checkpoint on validation |
+| `scripts/check_mlp.py`, `scripts/pick_sample.py` | score scale and opening example, from validation |
+| `scripts/build_page.py`, `site/template.html` | the page: drawing rules, ratio media queries, extract and render filters; markup and styles |
+| `scripts/diagram.py`, `site/prediction.svg` | one prediction, step by step, from the emulator; the page has the same panels inline |
+| `scripts/record.py`, `site/fenet.gif` | the recording: real mouse strokes on the real page |
+| `scripts/evaluate.py` | the test figures, run once the model and page are fixed |
+| `scripts/browser_check_mlp.py`, `scripts/test_draw.py` | Chromium checks; `test_draw` draws as a first visitor would, straight over the example |
+| `scripts/eval_thin.py`, `scripts/compare_models.py`, `scripts/time_frames.py` | thin strokes and model against model on validation; frame cost |
+| `scripts/probe/` | the experiments behind the facts above, and screenshot helpers |
+| `model/` | `mlp.npz` (weights), `alpha.json` (score scale), `sample.json` (opening example), `facts.json` (figures quoted on the page) |
+| `results/` | `train.log`, `logs_evaluate.txt` and `logs_agreement.txt`: the training run, the test evaluation and the Chromium agreement run |
 
 ## Limits
 
 Besides the browsers, input and zoom levels under [Where it works](#where-it-works):
 
 - The zoom levels are a device pixel ratio of 1, the 65 ratios above 1 listed by `ratios()` in
-  `build_page.py`, and ten common ratios below 1.
+  `scripts/build_page.py`, and ten common ratios below 1.
 - The browser check is by CSS feature: `-moz-appearance` (Firefox), `hanging-punctuation` (Safari) and
   missing `:has()`. It was tested in Playwright's Chromium and WebKit; Firefox wouldn't start in the
   test environment, so its branch is untested.

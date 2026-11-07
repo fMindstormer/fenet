@@ -3,12 +3,12 @@ import numpy as np
 from PIL import Image
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-import train as T
-from train_mlp import MLP, blur
-from compile_mlp import SLOTS
+import fenet.train as T
+from fenet.mlp import MLP, blur
+from fenet.compile_mlp import SLOTS
 _, (Xv, _), _ = T.load()
 grids = T.batch_grid(Xv, range(40), None, aug=False)[:, 0]
-net = MLP(); net.p = dict(np.load("mlp.npz")); pred = net.predict(blur(grids))
+net = MLP(); net.p = dict(np.load("model/mlp.npz")); pred = net.predict(blur(grids))
 with sync_playwright() as p:
     b = p.chromium.launch()
     pg = b.new_page(viewport={"width": 800, "height": 500}, device_scale_factor=1.25)

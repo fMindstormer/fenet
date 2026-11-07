@@ -1,6 +1,6 @@
 """One prediction, step by step: the opening example as the filters see it, from the emulator's own images.
 
-    python diagram.py           writes site/prediction.svg (the README's copy); build_page.py puts the
+    python -m scripts.diagram   writes site/prediction.svg (the README's copy); build_page.py puts the
                                 same panels inline on the page
 
 Panels: the drawing, the pixels after threshold and blur, layer 1 and layer 2 as the 14x14 images the
@@ -9,8 +9,10 @@ filters write (one pixel per neuron), the ten scores, and the answer.
 import json
 from pathlib import Path
 import numpy as np
-from compile_mlp import N, SLOTS, build, emulate, positions
-from build_page import FONT, ROOT, sample_cells
+from fenet.compile_mlp import N, SLOTS, build, emulate, positions
+from fenet import ROOT
+from fenet.layout import FONT
+from scripts.build_page import sample_cells
 
 C = 8                       # px per cell in a 14x14 panel
 SIDE = N * C
@@ -36,8 +38,8 @@ STYLE_VARS = """
 
 
 def trace():
-    model = dict(np.load(ROOT / "mlp.npz"))
-    g = build(model, float(json.loads((ROOT / "alpha.json").read_text())["alpha"]))
+    model = dict(np.load(ROOT / "model" / "mlp.npz"))
+    g = build(model, float(json.loads((ROOT / "model" / "alpha.json").read_text())["alpha"]))
     x = np.zeros(N * N); x[sample_cells()] = 1; x = x.reshape(N, N)
     img = {}
     winners, scores, _ = emulate(g, x, trace=img)

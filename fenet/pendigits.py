@@ -1,6 +1,6 @@
 """UCI Pendigits as pad drawings: 10,992 digits written with a stylus by 44 people, kept as pen paths.
 
-    python pendigits.py [heights]     validation accuracy at each digit height, e.g. 7,10,13
+    python -m fenet.pendigits [heights]     validation accuracy at each digit height, e.g. 7,10,13
 
 A digit's path is scaled to a height on the 14x14 pad (10 cells by default, MNIST's proportion:
 20 of 28 pixels), centred, and drawn as a one-cell line through every cell it passes, as a mouse
@@ -87,9 +87,9 @@ def load(name, height=10.0):
 
 
 if __name__ == "__main__":
-    from train_mlp import MLP, blur
+    from fenet.mlp import MLP, blur
     heights = [float(h) for h in sys.argv[1].split(",")] if len(sys.argv) > 1 else [10.0]
-    net = MLP(); net.p = dict(np.load("mlp.npz"))
+    net = MLP(); net.p = dict(np.load("model/mlp.npz"))
     for h in heights:
         G, y = load("val", h)
         pred = net.predict(blur(G))

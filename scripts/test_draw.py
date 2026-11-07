@@ -4,7 +4,7 @@ import os, sys, time
 import numpy as np
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-from readout import STROKES, launch, read
+from fenet.readout import STROKES, launch, read
 
 def stroke(pg, gbox, path, steps=6):
     cell = gbox["width"] / 14

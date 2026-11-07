@@ -1,6 +1,6 @@
 """Build the page: a drawing grid, and an SVG whose filters run the network on a mirror of it.
 
-    python build_page.py            writes site/index.html (the Artifact page, no skeleton)
+    python -m scripts.build_page    writes site/index.html (the Artifact page, no skeleton)
                                     and site/test.html (with a document skeleton, for Chromium)
 
 How the result SVG is drawn:
@@ -19,18 +19,15 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 
 import numpy as np
 
-from compile_mlp import INK, N, SLOTS, build, emulate, to_svg
+from fenet import ROOT
+from fenet.compile_mlp import INK, N, SLOTS, build, emulate, fmt, positions, to_svg
+from fenet.layout import DOT, FONT, GX, GY, H, PITCH, W
 
-ROOT = Path(__file__).resolve().parent
 CELL = 20                    # CSS px per drawing cell
 PAD = N * CELL               # the drawing pad, 280 px
-W, H = 280, 316              # the readout
-DOT, PITCH = 10.5, 28        # dot-matrix glyph: dot radius and pitch
-GX, GY = (W - 5 * PITCH) // 2, 10
 BY, BH, BW = 232, 76, 14     # bars: top, height, width; column k is 28 px wide
 
 # Chromium's preset zoom levels times common device scale factors: every ratio above 1 needs its own
@@ -51,15 +48,6 @@ def ratios():
             out.append(v)
     return out
 
-
-FONT = {  # 5x7, rows top to bottom
-    "0": "01110 10001 10011 10101 11001 10001 01110", "1": "00100 01100 00100 00100 00100 00100 01110",
-    "2": "01110 10001 00001 00010 00100 01000 11111", "3": "11111 00010 00100 00010 00001 10001 01110",
-    "4": "00010 00110 01010 10010 11111 00010 00010", "5": "11111 10000 11110 00001 00001 10001 01110",
-    "6": "00110 01000 10000 11110 10001 10001 01110", "7": "11111 00001 00010 00100 01000 01000 01000",
-    "8": "01110 10001 10001 01110 10001 10001 01110", "9": "01110 10001 10001 01111 00001 00010 01100",
-    "?": "01110 10001 00001 00010 00100 00000 00100", "all": "11111 11111 11111 11111 11111 11111 11111",
-}
 
 
 def data_svg(body: str, w: float, h: float) -> str:
@@ -158,7 +146,7 @@ def render_filter() -> str:
 
 
 def sample_cells() -> list[int]:
-    s = json.loads((ROOT / "sample.json").read_text())
+    s = json.loads((ROOT / "model" / "sample.json").read_text())
     return [i for i, v in enumerate(s["cells"]) if v]
 
 
@@ -194,7 +182,7 @@ def page(g, test=False, facts=None):
     out = (f'<svg class="out" width="{W}" height="{H}" viewBox="0 0 {W} {H}" aria-hidden="true">'
            f'<defs>{net}{"".join(s for _, s in extracts)}{render_filter()}</defs>'
            f'<g class="net">{nested}</g></svg>')
-    from diagram import html as diagram          # imports this module, so not at the top
+    from scripts.diagram import html as diagram  # imports this module, so not at the top
     html = (tmpl.replace("/*RULES*/", rules).replace("/*MEDIA*/", "\n".join(media))
             .replace("<!--GRID-->", grid).replace("<!--OUT-->", out).replace("<!--DIAGRAM-->", diagram()))
     for k, v in (facts or {}).items():
@@ -205,17 +193,16 @@ def page(g, test=False, facts=None):
 
 
 def main():
-    model = dict(np.load(ROOT / "mlp.npz"))
-    alpha = float(json.loads((ROOT / "alpha.json").read_text())["alpha"])
+    model = dict(np.load(ROOT / "model" / "mlp.npz"))
+    alpha = float(json.loads((ROOT / "model" / "alpha.json").read_text())["alpha"])
     g = build(model, alpha)
-    facts = json.loads((ROOT / "facts.json").read_text()) if (ROOT / "facts.json").exists() else {}
+    facts = json.loads((ROOT / "model" / "facts.json").read_text()) if (ROOT / "model" / "facts.json").exists() else {}
     facts["primitives"] = len(g.ops)
     h1, h2 = model["W1"].shape[1], model["W2"].shape[1]
     facts.update(h1=h1, h2=h2, convs=sum(kind in ("conv", "neuron", "taps") for _, kind, _ in g.ops),
                  weights=f'{sum(v.size for v in model.values()):,}')
     facts["ratios"] = len(ratios())
     facts["nratios"] = len(ratios()) + len(LOW) + 1
-    from compile_mlp import fmt, positions
     j = positions(model["W1"].shape[1]).index((5, 1))          # the neuron quoted on the page
     facts["eg_bias"] = fmt(float(model["b1"][j]))
     gif = ROOT / "site" / "fenet.gif"                  # the recording (record.py), which needs the page first

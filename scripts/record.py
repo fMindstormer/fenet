@@ -1,6 +1,6 @@
 """The recording in the README and on the page: real mouse strokes on the real page in Chromium.
 
-    python record.py            writes site/fenet.gif (run build_page.py again afterwards: it reads the size)
+    python -m scripts.record    writes site/fenet.gif (run build_page.py again afterwards: it reads the size)
 
 A first visit: the opening example, a 7 drawn straight over it, Clear, a 4, Clear, a 2. Frames are
 screenshots of the two boxes after each mouse move, with a pointer drawn in (screenshots leave it out).
@@ -9,7 +9,7 @@ import io
 from pathlib import Path
 from PIL import Image, ImageDraw
 from playwright.sync_api import sync_playwright
-from readout import STROKES, launch
+from fenet.readout import STROKES, launch
 
 ARROW = [(0, 0), (0, 17), (4, 13), (7, 20), (10, 19), (7, 12), (12, 12)]
 

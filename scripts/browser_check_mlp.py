@@ -1,20 +1,20 @@
 """Test digits through the real page in Chromium: paint the mirror cells, read the printed answer.
 
-    python browser_check_mlp.py [n] [ratios]     e.g. 200 1,1.25,2
+    python -m scripts.browser_check_mlp [n] [ratios]     e.g. 200 1,1.25,2
 """
 import os, sys, time
 import numpy as np
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-import train as T
-from train_mlp import MLP, blur
-from readout import launch, read
+import fenet.train as T
+from fenet.mlp import MLP, blur
+from fenet.readout import launch, read
 
 n = int(sys.argv[1]) if len(sys.argv) > 1 else 100
 dprs = [float(d) for d in (sys.argv[2].split(",") if len(sys.argv) > 2 else ["1"])]
 _, _, (Xt, yt) = T.load()
 grids = T.batch_grid(Xt, range(n), None, aug=False)[:, 0]
-net = MLP(); net.p = dict(np.load("mlp.npz"))
+net = MLP(); net.p = dict(np.load("model/mlp.npz"))
 pred = net.predict(blur(grids))
 with sync_playwright() as p:
     b = launch(p)

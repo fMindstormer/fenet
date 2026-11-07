@@ -3,7 +3,7 @@ import os, sys, time
 import numpy as np
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-from readout import launch
+from fenet.readout import launch
 page = sys.argv[1] if len(sys.argv) > 1 else "site/test.html"
 with sync_playwright() as p:
     b = launch(p)

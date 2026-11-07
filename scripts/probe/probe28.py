@@ -9,11 +9,11 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 from playwright.sync_api import sync_playwright
-from compile_mlp import N, build, to_svg
-from readout import launch
+from fenet.compile_mlp import N, build, to_svg
+from fenet.readout import launch
 
-m = dict(np.load("mlp.npz")); alpha = json.load(open("alpha.json"))["alpha"]
-cells = json.load(open("sample.json"))["cells"]
+m = dict(np.load("model/mlp.npz")); alpha = json.load(open("model/alpha.json"))["alpha"]
+cells = json.load(open("model/sample.json"))["cells"]
 rects = "".join(f'<rect x="{i % N}" y="{i // N}" width="1" height="1" fill="#fff"/>' for i, v in enumerate(cells) if v)
 
 
