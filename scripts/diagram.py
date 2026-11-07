@@ -20,7 +20,7 @@ SIDE = N * C
 CAPTIONS = [
     ("Your strokes", "14 × 14 cells on the pad."),
     ("Pixels", "196 <code>:has()</code> rules copy the cells into screen pixels; a threshold and a 3 × 3 blur follow."),
-    ("Layer 1: {h1} neurons", "Each is one <code>feConvolveMatrix</code>: 196 weights over the whole image, plus a bias, clamped to 0…1, written to one pixel."),
+    ("Layer 1: {h1} neurons", "Each is one <code>feConvolveMatrix</code>: 196 weights over the whole image, plus a bias, clamped to 0…1; an <code>feOffset</code> puts it in one pixel."),
     ("Layer 2: {h2} neurons", "The same, reading layer 1's image."),
     ("Scores", "Ten more neurons, one per digit."),
     ("Answer", "<code>feMorphology</code> finds the highest score; a second filter prints it."),
@@ -44,7 +44,7 @@ def trace():
     img = {}
     winners, scores, _ = emulate(g, x, trace=img)
     blur = next(name for name, kind, _ in g.ops if kind == "conv")
-    l1, l2 = (stage[-1][0] for stage in g.stages()[:2])
+    l1, l2 = (stage[-1][0] for stage in g.stages()[-3:-1])       # the filters that finish layers 1 and 2
     h1, h2 = model["W1"].shape[1], model["W2"].shape[1]
     return dict(x=x, blur=img[blur][0][:N, :N], l1=img[l1][0][:N, :N], l2=img[l2][0][:N, :N],
                 p1=positions(h1), p2=positions(h2), scores=scores, winner=winners[0], h1=h1, h2=h2)

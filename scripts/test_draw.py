@@ -1,9 +1,10 @@
-"""Draw with real mouse events in Chromium and read the dot-matrix answer off the screen, as a first visitor
+"""Draw with real mouse events in Chromium (ENGINE=firefox for Firefox) and read the dot-matrix answer off the screen, as a first visitor
 would: the first digit straight over the opening example, then Clear before each of the others."""
 import os, sys, time
 import numpy as np
 from pathlib import Path
 from playwright.sync_api import sync_playwright
+from fenet import PAGE
 from fenet.readout import STROKES, launch, read
 
 def stroke(pg, gbox, path, steps=6):
@@ -22,12 +23,15 @@ with sync_playwright() as p:
     b = launch(p)
     for dpr in dprs:
         pg = b.new_page(viewport={"width": 1100, "height": 900}, device_scale_factor=dpr)
-        pg.goto(Path("site/test.html").resolve().as_uri())
+        pg.goto(PAGE.as_uri())
         if os.environ.get("EXTRA_CSS"):
             pg.add_style_tag(content=os.environ["EXTRA_CSS"])
         pg.wait_for_timeout(1000)
         mark = np.array([0xd1, 0x36, 0x2b]); dim = np.array([0x6f, 0x9b, 0xc8])
         box = pg.locator(".out").bounding_box(); gbox = pg.locator(".grid").bounding_box()
+        if box is None:                               # a zoom level the page declines, with a note
+            note = pg.locator(".zoomnote:visible").first.text_content() if pg.locator(".zoomnote:visible").count() else "no note"
+            print(f"dpr {dpr}: no reading at this zoom level; note: {note[:60]}...", flush=True); pg.close(); continue
         res = [f"opening example: {read(pg, box, mark, dim)}"]
         res[0] += " " + str(pg.evaluate("[devicePixelRatio, getComputedStyle(document.querySelector('.out')).visibility, getComputedStyle(document.querySelector('.out')).filter]"))
         if ONLY_OPEN:
@@ -41,8 +45,8 @@ with sync_playwright() as p:
             t0 = time.time(); got = read(pg, box, mark, dim); dt = time.time() - t0
             res.append(f"drew {want}{' over the example' if k == 0 else ''}: read {got} ({1000 * dt:.0f} ms to screenshot)")
             if k == 0:
-                shown = pg.evaluate("[...document.querySelectorAll('.ex')].map(e => getComputedStyle(e).display)")
-                res.append("example after the first stroke: " + ("gone" if set(shown) == {"none"} else f"still shown {shown}"))
+                shown = pg.evaluate("[...document.querySelectorAll('.ex')].map(e => getComputedStyle(e).display == 'none' ? 'none' : getComputedStyle(e).visibility)")
+                res.append("example after the first stroke: " + ("gone" if set(shown) <= {"none", "hidden"} else f"still shown {shown}"))
         clear.click(); pg.wait_for_timeout(100)
         res.append(f"after Clear: {read(pg, box, mark, dim)}")
         print(f"dpr {dpr}: " + "; ".join(res), flush=True)

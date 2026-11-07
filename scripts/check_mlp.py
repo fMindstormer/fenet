@@ -2,18 +2,19 @@
 import json, sys
 import numpy as np
 import fenet.train as T
-from fenet.mlp import MLP, blur
+from fenet import ALPHA, WEIGHTS
+from fenet.convnet import load
+from fenet.mlp import blur
 from fenet.compile_mlp import build, emulate
 
-m = dict(np.load("model/mlp.npz"))
-net = MLP(); net.p = m
+net = load(WEIGHTS); m = net.p
 _, (Xv, yv), _ = T.load()
 grids = T.batch_grid(Xv, range(len(Xv)), None, aug=False)[:, 0]
 xb = blur(grids)
 logits = np.concatenate([net.forward(xb[i:i + 1000])[0] for i in range(0, len(xb), 1000)])
 pred = logits.argmax(1)
 alpha = 0.47 / float(np.quantile(logits.max(1), 0.995))
-json.dump({"alpha": alpha}, open("model/alpha.json", "w"))
+json.dump({"alpha": alpha}, open(ALPHA, "w"))
 print(f"model validation accuracy {np.mean(pred == yv):.4f}, alpha {alpha:.4f}")
 g = build(m, alpha)
 n = int(sys.argv[1]) if len(sys.argv) > 1 else 500

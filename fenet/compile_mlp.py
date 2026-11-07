@@ -1,11 +1,14 @@
 """Compile the perceptron (mlp.npz) into SVG filters, and emulate them in NumPy.
 
-User units are device pixels (the page scales the group by 1/devicePixelRatio). Every image is
-14x14. A neuron is one feConvolveMatrix: a 14x14 kernel whose target is the neuron's own pixel, so
-the kernel always spans exactly the 14x14 input, and every neuron of a layer asks for the same input
-region (Chromium can then reuse it). A layer's neurons are merged onto a black square.
+User units are device pixels (Chromium: the page scales the group by 1/devicePixelRatio; Firefox runs
+filters in CSS pixels). Every image is 14x14. A neuron is an feConvolveMatrix with a 15x15 kernel
+centred on (7, 7), which spans the whole 14x14 input from there, and an feOffset that moves the value
+to the neuron's own pixel. The convolution's subregion is the whole image: Firefox and Safari clip a
+convolution's input to its own subregion. Every neuron of a layer asks for the same input region
+(Chromium can then reuse it). A layer's neurons are merged onto a black square.
 
-Each layer is its own filter (#net1, #net2, #net3), applied on nested groups. Chromium's GPU raster
+Each layer is its own filter, applied on nested groups; layer 1 takes two (#net1 and #net2), because
+Firefox renders nothing for a filter of more than 256 primitives. Chromium's GPU raster
 does not reuse a shared input: in one filter, every layer-2 neuron would compute layer 1 again, and
 past about 43 of them the result is empty. A group's content is drawn once before its filter runs,
 so a layer reads the one below as a finished image. The ink flag rides along in pixels no neuron
@@ -24,6 +27,8 @@ N = 14
 SLOTS = [(1 + 4 * (k % 4), 1 + 4 * (k // 4)) for k in range(10)]
 INK = (13, 9)
 CARRY = (13, 6)              # free in layer 1 (192 neurons), above INK so the move is a plain offset
+C = N // 2                   # where every neuron's kernel runs, centred: 15x15 taps cover the image from here
+MAX_PRIMITIVES = 256         # Firefox renders nothing for a filter with more
 BLUR = np.array([[1, 2, 1], [2, 4, 2], [1, 2, 1]]) / 16
 
 
@@ -66,20 +71,32 @@ def build(m, alpha):
     assert CARRY not in P1 and INK not in P2 and CARRY[0] <= INK[0] and CARRY[1] <= INK[1]
     # whether anything is drawn, kept in a pixel the layer-2 kernels ignore
     carry = g.add("dilate", src=inp, r=N, region=(*CARRY, 1, 1))
-    prev = blur
+    prev = conv_layer(g, m, blur) if "Wc" in m else blur
     for W, b, P, Pin in ((W1, b1, P1, None), (W2, b2, P2, P1)):
-        black = g.add("flood", color=0.0, region=full)
-        units = []
-        for j, (hx, hy) in enumerate(P):
+        imgs = []
+        for j in range(len(P)):
             img = np.zeros((N, N))
             if Pin is None:
                 img[:, :] = W[:, j].reshape(N, N)
             else:
                 for i, (px, py) in enumerate(Pin):
                     img[py, px] = W[i, j]
-            units.append(g.add("neuron", src=prev, img=img, x=hx, y=hy, bias=float(b[j]), region=(hx, hy, 1, 1)))
-        prev = g.add("merge", srcs=[black] + units + [carry], region=full)
+            imgs.append(img)
+        # two primitives per neuron: past MAX_PRIMITIVES the layer takes two filters, and the first
+        # passes its input on to the second in a second 14x14 square to the right
+        split = len(P) // 2 if 2 * len(P) + 8 > MAX_PRIMITIVES else len(P)
+        black = g.add("flood", color=0.0, region=full)
+        units = [g.add("neuron", src=prev, img=imgs[j], x=hx, y=hy, ix=0, bias=float(b[j]), region=(hx, hy, 1, 1))
+                 for j, (hx, hy) in enumerate(P[:split])]
+        if split < len(P):
+            units.append(g.add("offset", src=prev, dx=N, dy=0, region=(N, 0, N, N)))
+        prev = g.add("merge", srcs=[black] + units + [carry], region=(0, 0, N if split == len(P) else 2 * N, N))
         g.cut()
+        if split < len(P):
+            units = [g.add("neuron", src=prev, img=imgs[j], x=hx, y=hy, ix=N, bias=float(b[j]), region=(hx, hy, 1, 1))
+                     for j, (hx, hy) in enumerate(P[split:], split)]
+            prev = g.add("merge", srcs=[prev] + units, region=full)
+            g.cut()
         if Pin is None:          # layer 2 moves the flag to INK, which the score kernels ignore
             carry = g.add("offset", src=prev, dx=INK[0] - CARRY[0], dy=INK[1] - CARRY[1], region=(*INK, 1, 1))
     black = g.add("flood", color=0.0, region=full)
@@ -89,7 +106,7 @@ def build(m, alpha):
         for i, (px, py) in enumerate(P2):
             img[py, px] = alpha * W3[i, k]
         scores_img.append(img); score_bias.append(0.5 + alpha * float(b3[k]))
-        scores.append(g.add("neuron", src=prev, img=img, x=sx, y=sy, bias=score_bias[k], region=(sx, sy, 1, 1)))
+        scores.append(g.add("neuron", src=prev, img=img, x=sx, y=sy, ix=0, bias=score_bias[k], region=(sx, sy, 1, 1)))
     sc = g.add("merge", srcs=[black] + scores, region=full)
     best = g.add("dilate", src=sc, r=N, region=full)
     # 1 + score - best is 1 exactly where the score is the maximum. (feBlend difference would do too,
@@ -119,16 +136,40 @@ def build(m, alpha):
     return g
 
 
+def conv_layer(g, m, src):
+    """fenet/convnet.py's convolutional layer. Per channel: a 5x5 convolution, a 3x3 max (dilate), the
+    pixels at even (x, y) kept by a tiled mask and moved to the channel's place, channel k at
+    (2i + k % 2, 2j + k // 2); the four add up to one 14x14 image for the dense layers."""
+    full = (0, 0, N, N)
+    Wc, bc = m["Wc"], m["bc"]
+    k = int(round(np.sqrt(len(Wc))))
+    cell = g.add("merge", srcs=[g.add("flood", color=0.0, region=(0, 0, 2, 2)), g.add("flood", color=1.0, region=(0, 0, 1, 1))],
+                 region=(0, 0, 2, 2))
+    even = g.add("tile", src=cell, region=full)
+    parts = []
+    for c in range(Wc.shape[1]):
+        a = g.add("conv", src=src, K3=Wc[:, c].reshape(k, k), bias=float(bc[c]), region=full)
+        kept = g.add("mul", a=g.add("dilate", src=a, r=1, region=full), b=even, region=full)
+        parts.append(g.add("offset", src=kept, dx=c % 2, dy=c // 2, region=full))
+    f = parts[0]
+    for part in parts[1:]:
+        f = g.add("sum", a=f, b=part, region=full)
+    return f
+
+
 # ------------------------------------------------------------------ emulator
 def emulate(g, x, quant=True, trace=None):
     """Run the graph on a 14x14 drawing. trace, a dict, receives every result as (value, alpha) images."""
-    S = N + 4
+    S = 2 * N + 4
     src = np.zeros((S, S)); src[:N, :N] = x
     alpha = np.zeros((S, S)); alpha[:N, :N] = 1
     img = {"SourceGraphic": (src, alpha)}
     q = (lambda v: np.round(v * 255) / 255) if quant else (lambda v: v)
+    stages = g.stages()
+    clip = {ops[-1][0]: stage_width(nxt) for ops, nxt in zip(stages, stages[1:])}    # what the next filter sees
+    regions = {}
     for name, kind, p in g.ops:
-        x0, y0, w, h = p["region"]
+        x0, y0, w, h = regions[name] = p["region"]
         mask = np.zeros((S, S), bool); mask[y0:y0 + h, x0:x0 + w] = True
         if kind == "flood":
             v = np.full((S, S), p["color"]); a = np.ones((S, S))
@@ -137,14 +178,14 @@ def emulate(g, x, quant=True, trace=None):
         elif kind == "threshold":
             sv, sa = img[p["src"]]
             v = (sv >= 0.5).astype(float); a = sa
-        elif kind == "conv":                         # the blur: 3x3, zero padding
+        elif kind == "conv":                         # a small centred kernel, zero padding
             sv, sa = img[p["src"]]
             v = ndimage.correlate(sv, p["K3"], mode="constant") + p["bias"]
             v = q(np.clip(v, 0, 1)); a = sa
         elif kind == "neuron":
             sv, sa = img[p["src"]]
             v = np.zeros((S, S))
-            v[p["y"], p["x"]] = q(np.clip((sv[:N, :N] * p["img"]).sum() + p["bias"], 0, 1))
+            v[p["y"], p["x"]] = q(np.clip((sv[:N, p["ix"]:p["ix"] + N] * p["img"]).sum() + p["bias"], 0, 1))
             a = sa
         elif kind == "merge":
             v = np.zeros((S, S)); a = np.zeros((S, S))
@@ -188,12 +229,19 @@ def emulate(g, x, quant=True, trace=None):
         elif kind == "sum":
             av, aa = img[p["a"]]; bv, ba = img[p["b"]]
             v = np.clip(av + bv, 0, 1); a = np.clip(aa + ba, 0, 1)
-        elif kind == "offset":
+        elif kind == "tile":
+            sv, sa = img[p["src"]]
+            tx, ty, tw, th = regions[p["src"]]
+            reps = (S // th + 1, S // tw + 1)
+            v = np.tile(sv[ty:ty + th, tx:tx + tw], reps)[:S, :S]; a = np.tile(sa[ty:ty + th, tx:tx + tw], reps)[:S, :S]
+        elif kind == "offset":                        # dx, dy >= 0
             sv, sa = img[p["src"]]
             v = np.zeros((S, S)); a = np.zeros((S, S))
             v[p["dy"]:, p["dx"]:] = sv[:S - p["dy"], :S - p["dx"]]; a[p["dy"]:, p["dx"]:] = sa[:S - p["dy"], :S - p["dx"]]
         else:
             raise ValueError(kind)
+        if name in clip:
+            mask[:, clip[name]:] = False
         img[name] = (np.where(mask, v, 0.0), np.where(mask, a, 0.0))
     if trace is not None:
         trace.update(img)
@@ -228,13 +276,17 @@ def primitive(name, kind, p):
                 f'<feFuncG type="discrete" tableValues="0 1"/><feFuncB type="discrete" tableValues="0 1"/></feComponentTransfer>')
     elif kind == "conv":
         K = p["K3"][::-1, ::-1].ravel()
-        return (f'<feConvolveMatrix in="{p["src"]}" order="3" kernelMatrix="{" ".join(fmt(k) for k in K)}" divisor="1" '
-                f'bias="0" preserveAlpha="true" edgeMode="none" {reg} result="{name}"/>')
+        return (f'<feConvolveMatrix in="{p["src"]}" order="{len(p["K3"])}" kernelMatrix="{" ".join(fmt(k) for k in K)}" divisor="1" '
+                f'bias="{fmt(p["bias"])}" preserveAlpha="true" edgeMode="none" {reg} result="{name}"/>')
     elif kind == "neuron":
-        K = p["img"][::-1, ::-1].ravel()        # feConvolveMatrix flips the kernel
-        return (f'<feConvolveMatrix in="{p["src"]}" order="{N}" targetX="{p["x"]}" targetY="{p["y"]}" divisor="1" '
-                f'bias="{fmt(p["bias"])}" preserveAlpha="true" edgeMode="none" {reg} result="{name}" '
-                f'kernelMatrix="{" ".join(fmt(k) for k in K)}"/>')
+        # Firefox and Safari clip a convolution's input to its own subregion, so the kernel can't run
+        # on a one-pixel subregion: a centred 15x15 kernel at (7, 7) sees the whole image from inside
+        # it, and feOffset moves the result to the neuron's pixel
+        K = np.pad(p["img"], ((0, 1), (0, 1)))[::-1, ::-1].ravel()        # feConvolveMatrix flips the kernel
+        return (f'<feConvolveMatrix in="{p["src"]}" order="{N + 1}" targetX="{C}" targetY="{C}" divisor="1" '
+                f'bias="{fmt(p["bias"])}" preserveAlpha="true" edgeMode="none" x="{p["ix"]}" y="0" width="{N}" height="{N}" '
+                f'result="{name}c" kernelMatrix="{" ".join(fmt(k) for k in K)}"/>'
+                f'<feOffset in="{name}c" dx="{p["x"] - p["ix"] - C}" dy="{p["y"] - C}" {reg} result="{name}"/>')
     elif kind == "merge":
         nodes = "".join(f'<feMergeNode in="{s}"/>' for s in p["srcs"])
         return f'<feMerge {reg} result="{name}">{nodes}</feMerge>'
@@ -275,9 +327,23 @@ def primitive(name, kind, p):
                 f'<feFuncA type="linear" slope="0" intercept="1"/></feComponentTransfer>')
     elif kind == "sum":
         return f'<feComposite in="{p["a"]}" in2="{p["b"]}" operator="arithmetic" k2="1" k3="1" {reg} result="{name}"/>'
+    elif kind == "tile":
+        return f'<feTile in="{p["src"]}" {reg} result="{name}"/>'
     elif kind == "offset":
         return f'<feOffset in="{p["src"]}" dx="{p["dx"]}" dy="{p["dy"]}" {reg} result="{name}"/>'
     raise ValueError(kind)
+
+
+def stage_width(ops):
+    """A filter's region: one 14x14 square, or two for a layer split in two, which writes its input to
+    the second square and reads it there. A filter sees its source only inside its region."""
+    return 2 * N if any(p["region"][0] >= N or p.get("ix", 0) >= N for _, _, p in ops) else N
+
+
+def primitives(g):
+    """Filter primitives in the SVG (a neuron is two; merge nodes and transfer functions are parts of one)."""
+    svg = to_svg(g)
+    return svg.count("<fe") - svg.count("<feMergeNode") - svg.count("<feFunc")
 
 
 def to_svg(g, fid="net"):
@@ -285,7 +351,8 @@ def to_svg(g, fid="net"):
     previous stage's last result becomes SourceGraphic; any other reference across stages is an error."""
     out, last = [], None
     for k, ops in enumerate(g.stages(), 1):
-        out.append(f'<filter id="{fid}{k}" x="0" y="0" width="{N}" height="{N}" filterUnits="userSpaceOnUse" '
+        width = stage_width(ops)
+        out.append(f'<filter id="{fid}{k}" x="0" y="0" width="{width}" height="{N}" filterUnits="userSpaceOnUse" '
                    f'primitiveUnits="userSpaceOnUse" color-interpolation-filters="sRGB">')
         seen = {"SourceGraphic"} if k == 1 else set()
 

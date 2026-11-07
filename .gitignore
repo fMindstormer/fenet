@@ -3,6 +3,7 @@ data/*.gz
 
 # build and check outputs
 site/test.html
+site/conv.html
 model.npz
 *.png
 

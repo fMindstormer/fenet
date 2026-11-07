@@ -22,8 +22,8 @@ import os
 
 import numpy as np
 
-from fenet import ROOT
-from fenet.compile_mlp import INK, N, SLOTS, build, emulate, fmt, positions, to_svg
+from fenet import ALPHA, MODEL, PAGE, ROOT, WEIGHTS
+from fenet.compile_mlp import INK, N, SLOTS, build, emulate, fmt, positions, primitives, to_svg
 from fenet.layout import DOT, FONT, GX, GY, H, PITCH, W
 
 CELL = 20                    # CSS px per drawing cell
@@ -193,11 +193,11 @@ def page(g, test=False, facts=None):
 
 
 def main():
-    model = dict(np.load(ROOT / "model" / "mlp.npz"))
-    alpha = float(json.loads((ROOT / "model" / "alpha.json").read_text())["alpha"])
+    model = dict(np.load(WEIGHTS))
+    alpha = float(json.loads(ALPHA.read_text())["alpha"])
     g = build(model, alpha)
     facts = json.loads((ROOT / "model" / "facts.json").read_text()) if (ROOT / "model" / "facts.json").exists() else {}
-    facts["primitives"] = len(g.ops)
+    facts["primitives"] = primitives(g)
     h1, h2 = model["W1"].shape[1], model["W2"].shape[1]
     facts.update(h1=h1, h2=h2, convs=sum(kind in ("conv", "neuron", "taps") for _, kind, _ in g.ops),
                  weights=f'{sum(v.size for v in model.values()):,}')
@@ -208,10 +208,13 @@ def main():
     gif = ROOT / "site" / "fenet.gif"                  # the recording (record.py), which needs the page first
     head = gif.read_bytes()[6:10] if gif.exists() else (640).to_bytes(2, "little") + (400).to_bytes(2, "little")
     facts["gif_w"], facts["gif_h"] = int.from_bytes(head[:2], "little"), int.from_bytes(head[2:], "little")
+    if MODEL != "mlp":                           # another network, for the Chromium checks only (MODEL=conv)
+        PAGE.write_text(page(g, True, facts)[0])
+        return print(f"{PAGE.relative_to(ROOT)}: {facts['primitives']} network primitives")
     for test in (False, True):
         html, nr = page(g, test, facts)
         (ROOT / "site" / ("test.html" if test else "index.html")).write_text(html)
-    print(f"site/index.html: {len((ROOT / 'site' / 'index.html').read_text()) / 1000:.0f} kB, {len(g.ops)} network primitives, {nr} ratios above 1")
+    print(f"site/index.html: {len((ROOT / 'site' / 'index.html').read_text()) / 1000:.0f} kB, {facts['primitives']} network primitives, {nr} ratios above 1")
 
 
 if __name__ == "__main__":

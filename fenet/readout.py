@@ -19,7 +19,9 @@ STROKES = {  # cell paths (col, row), drawn as press-drag-release
 
 def launch(p):
     """Full Chromium, which rasterizes on the GPU where there is one, as desktop browsers do (the headless
-    shell is software only). RASTER=sw forces software raster."""
+    shell is software only). RASTER=sw forces software raster. ENGINE=firefox (or webkit) runs that instead."""
+    if os.environ.get("ENGINE", "chromium") != "chromium":
+        return getattr(p, os.environ["ENGINE"]).launch()
     flag = "--disable-gpu-rasterization" if os.environ.get("RASTER") == "sw" else "--enable-gpu-rasterization"
     return p.chromium.launch(channel="chromium", args=[flag])
 

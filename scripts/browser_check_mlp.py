@@ -7,20 +7,22 @@ import numpy as np
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 import fenet.train as T
-from fenet.mlp import MLP, blur
+from fenet import PAGE, WEIGHTS
+from fenet.convnet import load
+from fenet.mlp import blur
 from fenet.readout import launch, read
 
 n = int(sys.argv[1]) if len(sys.argv) > 1 else 100
 dprs = [float(d) for d in (sys.argv[2].split(",") if len(sys.argv) > 2 else ["1"])]
 _, _, (Xt, yt) = T.load()
 grids = T.batch_grid(Xt, range(n), None, aug=False)[:, 0]
-net = MLP(); net.p = dict(np.load("model/mlp.npz"))
+net = load(WEIGHTS)
 pred = net.predict(blur(grids))
 with sync_playwright() as p:
     b = launch(p)
     for dpr in dprs:
         pg = b.new_page(viewport={"width": 1100, "height": 900}, device_scale_factor=dpr)
-        pg.goto(Path("site/test.html").resolve().as_uri())
+        pg.goto(PAGE.as_uri())
         pg.add_style_tag(content=".mirror rect.m { transition: none !important; } .ex { display: none !important; }")
         pg.wait_for_timeout(1000)
         box = pg.locator(".out").bounding_box()

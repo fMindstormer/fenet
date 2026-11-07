@@ -59,6 +59,9 @@ class MLP:
         self.t = 0
 
     def forward(self, xb):
+        return self.dense(xb)
+
+    def dense(self, xb):
         z1 = xb @ self.p["W1"] + self.p["b1"]
         a1 = T.q8(np.clip(z1, 0, 1))
         z2 = a1 @ self.p["W2"] + self.p["b2"]
@@ -66,7 +69,13 @@ class MLP:
         return a2 @ self.p["W3"] + self.p["b3"], (z1, a1, z2, a2)
 
     def step(self, xb, y, lr, wd=1e-5):
-        logits, (z1, a1, z2, a2) = self.forward(xb)
+        loss, g, _ = self.backward(xb, y)
+        self.update(g, lr, wd)
+        return loss
+
+    def backward(self, xb, y):
+        """The loss, the gradients, and the gradient at layer 1's sums (for a layer in front of this one)."""
+        logits, (z1, a1, z2, a2) = self.dense(xb)
         B = len(y)
         e = np.exp(logits - logits.max(1, keepdims=True))
         pr = e / e.sum(1, keepdims=True)
@@ -77,13 +86,15 @@ class MLP:
         g["W2"], g["b2"] = a1.T @ d2, d2.sum(0)
         d1 = (d2 @ self.p["W2"].T) * ((z1 > 0) & (z1 < 1))
         g["W1"], g["b1"] = xb.T @ d1, d1.sum(0)
+        return loss, g, d1
+
+    def update(self, g, lr, wd):
         self.t += 1
         for k in self.p:
             gk = g[k] + (wd * self.p[k] if k.startswith("W") else 0)
             self.m[k] = 0.9 * self.m[k] + 0.1 * gk
             self.v[k] = 0.999 * self.v[k] + 0.001 * gk ** 2
             self.p[k] -= lr * (self.m[k] / (1 - 0.9 ** self.t)) / (np.sqrt(self.v[k] / (1 - 0.999 ** self.t)) + 1e-8)
-        return loss
 
     def predict(self, xb):
         return np.concatenate([self.forward(xb[i:i + 1000])[0].argmax(1) for i in range(0, len(xb), 1000)])

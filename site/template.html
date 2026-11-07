@@ -58,7 +58,10 @@ h1 { font-weight: 800; font-size: clamp(44px, 9vw, 76px); line-height: 0.95; let
 /* the opening example lies on top of the pad and its mirror until the pad is first pressed: it hides while
    the pad is pressed, and the click checks the radio (the pad sits in a label for it, as Clear does) */
 .ex { display: none; pointer-events: none; }
-:where(.app:not(:has(.cl:checked)):not(:has(.pad:active))) .ex { display: inline; }
+:where(.app:not(:has(.cl:checked))) .ex { display: inline; transition: visibility 0s 1000000s; }
+/* the first press hides it for good, as a painted cell stays painted: the click that checks the radio
+   doesn't come in Firefox when a stroke ends on another cell than it began */
+:where(.app:has(.pad:active)) .ex { visibility: hidden; transition: visibility 0s; }
 .grid .ex rect { fill: var(--ink); }
 .mirror .ex rect { fill: #fff; }
 .pad { display: block; width: fit-content; }
@@ -82,11 +85,10 @@ h1 { font-weight: 800; font-size: clamp(44px, 9vw, 76px); line-height: 0.95; let
 }
 .compat { margin: 10px 0 0; font-size: 14px; color: var(--muted); }
 .compat a, .engine a { color: inherit; }
-/* other engines place filter pixels differently and would misread: show the recording instead of the pad */
+/* Safari's filters would misread (and engines without :has() can't draw): the recording instead of the pad */
 .engine { display: none; max-width: 640px; border: 2px solid var(--mark); background: var(--sheet); padding: 16px 20px; }
 .engine p { margin: 0 0 12px; }
 .engine img { display: block; max-width: 100%; height: auto; border: 1.5px solid var(--dropout); }
-@supports (-moz-appearance: none) { .engine { display: block; } .sheet { display: none; } }
 @supports (hanging-punctuation: first) { .engine { display: block; } .sheet { display: none; } }
 @supports not selector(:has(a)) { .engine { display: block; } .sheet { display: none; } }
 
@@ -102,6 +104,22 @@ h1 { font-weight: 800; font-size: clamp(44px, 9vw, 76px); line-height: 0.95; let
 .caption { margin: 0; font-size: 13px; line-height: 1.4; color: var(--muted); }
 .zoomnote { display: none; margin: 0; padding: 10px 12px; border: 1.5px solid var(--mark); color: var(--ink); font-size: 14px; }
 /*MEDIA*/
+/* Firefox runs SVG filters in CSS pixels at every zoom level, so it needs none of the per-ratio scales
+   and sampling filters above: the mirror stays at one cell per CSS pixel, read as at 100%. Between
+   filters it scales each result to the screen, which blurs single pixels unless the ratio is whole. */
+.zoomnote.ff { display: none; }
+@supports (-moz-appearance: none) {
+  .net { transform: none; }
+  .out { display: block; filter: url(#x1) url(#render); }
+  .readout { transform: none; margin: 0; }
+  .field.read { width: 280px; }
+  .zoomnote { display: none; }
+  @media not (((min-resolution: 0.997dppx) and (max-resolution: 1.003dppx)) or ((min-resolution: 1.997dppx) and (max-resolution: 2.003dppx))
+      or ((min-resolution: 2.997dppx) and (max-resolution: 3.003dppx)) or ((min-resolution: 3.997dppx) and (max-resolution: 4.003dppx))) {
+    .readout, .caption { display: none; }
+    .zoomnote.ff { display: block; }
+  }
+}
 
 /* one reading, step by step */
 .flow { margin: 0; padding: 0; list-style: none; counter-reset: f; display: grid; grid-template-columns: repeat(auto-fill, minmax(136px, 1fr)); gap: 18px 20px; }
@@ -140,11 +158,11 @@ footer a { color: inherit; }
     <div class="formline"><span>Handwriting sample · 14 × 14 cells</span><span>No JavaScript on this page</span></div>
     <h1>fenet</h1>
     <p class="lede">A neural network that runs inside SVG filters: draw a digit in box 1, and a chain of {{primitives}} filter primitives reads it in box 2.</p>
-    <p class="compat">Works in Chrome, Edge, Brave and Arc, best with a mouse. Other browsers, and anyone curious first: <a href="fenet.gif">watch the recording</a>.</p>
+    <p class="compat">Works in Chrome, Edge, Brave, Arc and Firefox, best with a mouse. Safari, and anyone curious first: <a href="fenet.gif">watch the recording</a>.</p>
   </header>
 
   <section class="engine" aria-label="This browser isn't supported">
-    <p><strong>fenet needs Chrome, Edge, Brave or Arc</strong> on a computer or an Android phone (on iPhone and iPad every browser uses Safari's engine). This browser places SVG filter pixels differently, so the network would misread your drawing. Here is a recording of it in Chrome:</p>
+    <p><strong>fenet needs Chrome, Edge, Brave, Arc or Firefox</strong> on a computer or an Android phone (on iPhone and iPad every browser uses Safari's engine). This browser's SVG filters differ in ways the network can't absorb yet, so it would misread your drawing. Here is a recording of it in Chrome:</p>
     <img src="fenet.gif" loading="lazy" width="{{gif_w}}" height="{{gif_h}}" alt="Drawing a 7 on the pad, the filter reading 7; Clear; drawing a 4, read as 4; Clear; drawing a 2, read as 2.">
   </section>
 
@@ -164,6 +182,7 @@ footer a { color: inherit; }
       <ol class="labels" aria-hidden="true"><li>0</li><li>1</li><li>2</li><li>3</li><li>4</li><li>5</li><li>6</li><li>7</li><li>8</li><li>9</li></ol></div>
       <p class="caption">Bars: the network's score for each digit. The highest wins.</p>
       <p class="zoomnote">The filter has to know the size of a screen pixel, and this zoom level isn't on its list. Set the browser zoom to 100% to see the reading.</p>
+      <p class="zoomnote ff">In Firefox the filter reads correctly only when a CSS pixel is a whole number of screen pixels: 1, 2, 3 or 4. This zoom level gives a fraction. Try another zoom level (67% on a screen scaled to 150%, 80% at 125%), or Chrome.</p>
     </div>
   </section>
 
@@ -180,10 +199,12 @@ footer a { color: inherit; }
 <pre>.grid:active rect:hover { transition: fill 0s; }
 .grid rect { transition: fill 0s 1000000s; }</pre></li>
         <li><p><strong>196 <code>:has()</code> rules copy the drawing</strong> into a 14 × 14 square of screen pixels inside box 2. Media queries scale it by one over the device pixel ratio, so each cell is exactly one pixel.</p></li>
-        <li><p><strong>Each neuron is one <code>feConvolveMatrix</code>.</strong> Its 14 × 14 kernel covers the whole image and writes a single pixel: a weighted sum plus a bias, clamped to 0…1 like every filter result. Layers of {{h1}}, {{h2}} and 10 neurons follow a 3 × 3 blur.</p>
-<pre>&lt;feConvolveMatrix order="14" targetX="5" targetY="1"
+        <li><p><strong>Each neuron is one <code>feConvolveMatrix</code>.</strong> Centred on the middle pixel, its 15 × 15 kernel covers the whole image: a weighted sum plus a bias, clamped to 0…1 like every filter result. An <code>feOffset</code> moves that one value to the neuron's own pixel. Layers of {{h1}}, {{h2}} and 10 neurons follow a 3 × 3 blur.</p>
+<pre>&lt;feConvolveMatrix order="15" targetX="7" targetY="7"
   kernelMatrix="…196 weights…" bias="{{eg_bias}}"
-  x="5" y="1" width="1" height="1" …/&gt;</pre></li>
+  x="0" y="0" width="14" height="14" result="n" …/&gt;
+&lt;feOffset in="n" dx="-2" dy="-6"
+  x="5" y="1" width="1" height="1"/&gt;</pre></li>
         <li><p><strong>Morphology picks the winner.</strong> <code>feMorphology</code> dilates the ten scores to their maximum, <code>feComposite</code> computes 1 + score − maximum, and a lookup table keeps the pixel that came out exactly 1. One more convolution settles ties in favour of the lower digit.</p></li>
         <li><p><strong>A second filter prints the answer.</strong> It reads each digit's winner flag and score from the red and green channels of its slot, spreads them with <code>feTile</code>, and uses them to mask a dot-matrix digit and ten bars.</p></li>
       </ol>
@@ -194,15 +215,15 @@ footer a { color: inherit; }
         <dt>Network</dt><dd>196 → {{h1}} → {{h2}} → 10</dd>
         <dt>Weights</dt><dd>{{weights}}</dd>
         <dt>Filter primitives</dt><dd>{{primitives}} in the network, {{convs}} of them convolutions</dd>
-        <dt>Largest kernel</dt><dd>196 taps (Chromium's limit is 256)</dd>
+        <dt>Largest kernel</dt><dd>225 taps (Chromium's limit is 256)</dd>
         <dt>MNIST test digits</dt><dd>{{acc_clean}} correct</dd>
         <dt>Same, one-cell strokes</dt><dd>{{acc_thin}} correct</dd>
         <dt>Pen-written digits</dt><dd>{{acc_pen}} correct, by 14 writers it never saw (UCI Pendigits)</dd>
         <dt>Filter vs. model</dt><dd>{{agree}}</dd>
-        <dt>Zoom levels</dt><dd>{{nratios}} device pixel ratios from 0.5 to 5; others show a note</dd>
+        <dt>Zoom levels</dt><dd>{{nratios}} device pixel ratios from 0.5 to 5 in Chromium, 1 to 4 in Firefox; others show a note</dd>
         <dt>JavaScript</dt><dd>none</dd>
       </dl>
-      <p class="note">Built for Chromium browsers (Chrome, Edge, Brave, Arc). Other engines place filter pixels differently and may misread. Trained in NumPy on MNIST, reduced to 14 × 14 cells and thinned to look like mouse strokes, and on pen-written digits from UCI Pendigits, with every activation rounded to 8 bits as the browser stores it.</p>
+      <p class="note">Built for Chromium browsers (Chrome, Edge, Brave, Arc) and Firefox; Firefox reads at zoom levels that make a CSS pixel a whole number of screen pixels. Safari gets the recording. Trained in NumPy on MNIST, reduced to 14 × 14 cells and thinned to look like mouse strokes, and on pen-written digits from UCI Pendigits, with every activation rounded to 8 bits as the browser stores it.</p>
     </div>
   </section>
 

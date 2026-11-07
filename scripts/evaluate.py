@@ -7,13 +7,14 @@ into a choice: the checkpoint and the score scale come from validation (train_ml
 import json, sys
 import numpy as np
 import fenet.train as T
-from fenet.mlp import MLP, blur, thin28
+from fenet import ALPHA, WEIGHTS
+from fenet.convnet import load
+from fenet.mlp import blur, thin28
 from fenet.compile_mlp import build, emulate
 import fenet.pendigits as PD
 
-m = dict(np.load("model/mlp.npz"))
-net = MLP(); net.p = m
-alpha = json.load(open("model/alpha.json"))["alpha"]
+net = load(WEIGHTS); m = net.p
+alpha = json.load(open(ALPHA))["alpha"]
 _, _, (Xt, yt) = T.load()
 clean = T.batch_grid(Xt, range(len(Xt)), None, aug=False)[:, 0]
 skel = np.stack([thin28(x) for x in Xt])

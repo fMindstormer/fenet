@@ -1,0 +1,24 @@
+The convolutional network (fenet/convnet.py, model/conv.npz sha256 0f92e1f80eb9ccc490377b027e65bfb724df7352882d66f527fa4ff02c976ae1),
+trained by scripts/train_conv.py 40 (results/train_conv.log), score scale from validation (MODEL=conv scripts/check_mlp.py).
+MODEL=conv python -m scripts.evaluate 10000, run once:
+test, pooled to 14x14:            0.9705
+test, skeletonized to one cell:   0.9546
+Pendigits test writers, 10 cells: 0.9571  (3498 digits)
+emulated filter, first 10000 test digits: agrees with the model 9989, correct 9705, ties 0
+
+MODEL=conv python -m scripts.browser_check_mlp 200 ..., site/conv.html: Chromium 156 (Apple M4) and Firefox 157:
+== gpu raster
+dpr 0.75: 200 digits, the page prints the model's answer for 200, the true digit for 195, something unreadable for 0; render+read median 472 ms
+dpr 1.0: 200 digits, the page prints the model's answer for 200, the true digit for 195, something unreadable for 0; render+read median 270 ms
+dpr 1.25: 200 digits, the page prints the model's answer for 200, the true digit for 195, something unreadable for 0; render+read median 690 ms
+dpr 1.5: 200 digits, the page prints the model's answer for 200, the true digit for 195, something unreadable for 0; render+read median 679 ms
+dpr 2.0: 200 digits, the page prints the model's answer for 200, the true digit for 195, something unreadable for 0; render+read median 633 ms
+dpr 3.0: 200 digits, the page prints the model's answer for 200, the true digit for 195, something unreadable for 0; render+read median 392 ms
+== sw raster
+dpr 1.0: 200 digits, the page prints the model's answer for 200, the true digit for 195, something unreadable for 0; render+read median 49 ms
+dpr 1.5: 200 digits, the page prints the model's answer for 200, the true digit for 195, something unreadable for 0; render+read median 101 ms
+dpr 2.0: 200 digits, the page prints the model's answer for 200, the true digit for 195, something unreadable for 0; render+read median 119 ms
+== firefox
+dpr 1.0: 200 digits, the page prints the model's answer for 200, the true digit for 195, something unreadable for 0; render+read median 54 ms
+dpr 2.0: 200 digits, the page prints the model's answer for 200, the true digit for 195, something unreadable for 0; render+read median 116 ms
+

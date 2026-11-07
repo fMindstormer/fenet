@@ -1,7 +1,8 @@
 # fenet
 
 Draw a digit and SVG filters read it. The page has no JavaScript: CSS records the drawing, and a chain
-of 320 filter primitives, mostly `feConvolveMatrix`, runs a small neural network on it.
+of 620 filter primitives, one `feConvolveMatrix` and one `feOffset` per neuron, runs a small neural
+network on it.
 
 **[Try it](https://fmindstormer.github.io/fenet/)**: hold the mouse button and draw a digit in box 1.
 
@@ -9,13 +10,17 @@ of 320 filter primitives, mostly `feConvolveMatrix`, runs a small neural network
 
 ## Where it works
 
-- **Chrome, Edge, Brave and Arc**, on a computer or an Android phone. Firefox and Safari place filter
-  pixels differently and would misread, so they get the recording above instead of the pad (every
-  browser on iPhone and iPad uses Safari's engine).
+- **Chrome, Edge, Brave and Arc**, on a computer or an Android phone.
+- **Firefox**, at zoom levels where a CSS pixel is a whole number of screen pixels (a device pixel
+  ratio of 1, 2, 3 or 4): 100 % on most screens. Firefox runs the filters in CSS pixels and scales
+  each filter's result to the screen, which blurs single pixels at fractional ratios, so there the page
+  shows a note instead of a reading.
+- **Not Safari.** Safari gets the recording above instead of the pad (every browser on iPhone and iPad
+  uses Safari's engine). See [Browser facts](#browser-facts-it-depends-on) for why.
 - **A mouse or trackpad.** On a touchscreen, dragging doesn't move `:hover`, so cells are tapped one at
   a time; the page says so on touchscreens.
-- **Most zoom levels**: 76 device pixel ratios from 0.5 to 5, which covers the browser's preset zoom
-  levels on common screens. Others hide the reading and ask for 100 %.
+- **Most zoom levels** in Chromium: 76 device pixel ratios from 0.5 to 5, which covers the browser's
+  preset zoom levels on common screens. Others hide the reading and ask for 100 %.
 - **Shown unscaled.** A frame that scales the page (the claude.ai artifact viewer shows pages at 90 %)
   hides the scale from the media queries, and the network reads an empty pad.
 
@@ -27,8 +32,9 @@ The opening example, as the filters see it. The values are the filter graph's ow
 
 1. **Strokes**: 14 × 14 cells on the pad.
 2. **Pixels**: 196 `:has()` rules copy the cells into screen pixels; a threshold and a 3 × 3 blur follow.
-3. **Layer 1**: 192 neurons, each one `feConvolveMatrix` with 196 weights over the whole image plus a
-   bias, clamped to 0…1, writing one pixel of this 14 × 14 image (the faint dots mark the neurons).
+3. **Layer 1**: 192 neurons. Each is one `feConvolveMatrix` with 196 weights over the whole image plus a
+   bias, clamped to 0…1, and an `feOffset` that puts the result in one pixel of this 14 × 14 image (the
+   faint dots mark the neurons).
 4. **Layer 2**: 96 neurons, the same way over layer 1's image.
 5. **Scores**: ten more neurons, one per digit.
 6. **Answer**: `feMorphology` finds the highest score, and a second filter prints it as a dot-matrix digit.
@@ -56,7 +62,8 @@ seconds before going back. Clear is a `<label>` for a radio button: while it is 
 gets `transition: none` and snaps back. The opening example is an overlay on the pad (and on its mirror)
 shown only while the radio is unchecked and the pad isn't pressed. The pad sits in a second `<label>` for
 the same radio, so the first press hides the example and the click that ends it checks the radio, which
-stays checked. Before that, a first stroke landed on top of the example: a 7 drawn there was read as 5.
+stays checked. Firefox fires no click when a stroke ends on another cell than it began, so the press
+also sets `visibility: hidden` with a million-second transition back, like a painted cell. Before that, a first stroke landed on top of the example: a 7 drawn there was read as 5.
 
 **Mirror.** For each of the 196 cells, a rule like
 `.app:has(.grid:active rect:nth-child(37):hover) .mirror rect.m:nth-of-type(38)` paints the matching
@@ -64,23 +71,30 @@ cell of a 14 × 14 square inside the result SVG, with the same million-second tr
 a group scaled by `1/devicePixelRatio` (one media query per supported ratio), so each cell is exactly
 one device pixel, which is the unit `feConvolveMatrix` works in.
 
-**Network.** One `feConvolveMatrix` per neuron. The kernel is 14 × 14 (196 taps), its target is the
-neuron's own pixel, and its subregion is that one pixel, so the primitive computes a full dot product
-over the previous layer's image plus a bias, and clamps it to 0…1. Each layer is merged onto a black
-square, because `preserveAlpha` copies the source's alpha.
+**Network.** Each neuron is an `feConvolveMatrix` and an `feOffset`. The kernel is 15 × 15, centred on
+the middle pixel (7, 7), so it covers the whole 14 × 14 image from there: a full dot product over the
+previous layer's image plus a bias, clamped to 0…1. The convolution's subregion is the whole image, and
+the `feOffset`, whose subregion is one pixel, moves that one value to the neuron's own pixel. Each layer
+is merged onto a black square, because `preserveAlpha` copies the source's alpha.
+
+The page used to give each convolution a one-pixel subregion and an off-centre target, one primitive
+per neuron. Only Chromium reads input outside a convolution's subregion with `edgeMode="none"`, so it
+worked only there (see [Browser facts](#browser-facts-it-depends-on)).
 
 Each layer is its own filter, on nested groups with the first layer innermost. A group's content is drawn
 once before its filter runs, so a layer reads the one below as a finished image. In one big filter,
 Chromium's GPU raster would compute layer 1 again for every layer-2 neuron and give up (see below).
-The ink flag, whether anything is drawn at all, rides along in pixels no neuron uses: (13, 6) in
-layer 1, (13, 9) in layer 2.
+Firefox ignores a filter of more than 256 primitives, so layer 1 (192 neurons, 384 primitives) takes two
+filters: the first computes half the neurons and copies its input into a second 14 × 14 square to the
+right; the second reads that copy. The ink flag, whether anything is drawn at all, rides along in pixels
+no neuron uses: (13, 6) in layer 1, (13, 9) in layer 2.
 
 | stage | primitives |
 |---|---|
 | threshold + 3×3 blur | 2 |
-| hidden layer 1 (positions spread over the 14 × 14 image), ink flag | 192 + flood + 1 + merge |
-| hidden layer 2, ink flag moved to (13, 9) | 96 + flood + 1 + merge |
-| scores at slots (1 + 4·(k mod 4), 1 + 4·⌊k/4⌋) | 10 + flood + merge |
+| hidden layer 1 (positions spread over the 14 × 14 image), ink flag, in two filters | 2 × 192 + flood + 1 + copy + 2 merges |
+| hidden layer 2, ink flag moved to (13, 9) | 2 × 96 + flood + 1 + merge |
+| scores at slots (1 + 4·(k mod 4), 1 + 4·⌊k/4⌋) | 2 × 10 + flood + merge |
 | argmax: `feMorphology` dilate to the max, `feComposite` 1 + score − max, lookup table "is exactly 1" | 3 |
 | tie-break: one 25 × 9 convolution, +1 at the pixel, −1 wherever an earlier slot can sit | 1 |
 | output: winner block and ink flag in red, each score as a 3 × 3 block in green | 8 |
@@ -100,16 +114,35 @@ dark theme.
 
 ## Results
 
-| | |
-|---|---|
-| network | 196 → 192 → 96 → 10, 57,322 weights, clipped-linear activations, 8-bit |
-| MNIST test, pooled to 14 × 14 | 96.7 % |
-| MNIST test, skeletonized to one-cell strokes | 95.0 % |
-| pen-written digits, 14 writers it never saw (UCI Pendigits test, drawn 10 cells tall) | 94.8 % (82.0 % when trained on MNIST alone) |
-| emulator vs NumPy model | the same answer for 9,991 of 10,000 MNIST test digits; the 9 others are near-ties, with the top two scores less than one 8-bit step apart |
-| Chromium vs NumPy model | the page prints the model's answer for all 200 MNIST test digits at each of 8 zoom levels from 0.75 to 3, with GPU and with software raster ([`results/logs_agreement.txt`](results/logs_agreement.txt)). Chromium's convolutions don't round exactly like the emulator, so a near-tie can still go either way |
-| page size | about 710 kB, all inline except the Google Fonts stylesheet |
-| time per painted cell | under 0.1 s in Chromium 156 on an Apple M4, GPU or software raster (`scripts/time_frames.py`, screenshot included) |
+| | the page's network | with a convolutional layer (not on the page) |
+|---|---|---|
+| network | 196 → 192 → 96 → 10, 57,322 weights | 4 channels of 5 × 5 convolution, 3 × 3 max at every other pixel, then 196 → 192 → 96 → 10, 57,426 weights |
+| activations | clipped-linear, 8-bit | the same |
+| MNIST test, pooled to 14 × 14 | 96.7 % | 97.1 % |
+| MNIST test, skeletonized to one-cell strokes | 95.0 % | 95.5 % |
+| pen-written digits, 14 writers it never saw (UCI Pendigits test, drawn 10 cells tall) | 94.8 % (82.0 % when trained on MNIST alone) | 95.7 % |
+| emulator vs NumPy model, 10,000 MNIST test digits | the same answer for 9,991; the 9 others are near-ties, with the top two scores less than one 8-bit step apart | 9,989 |
+| Chromium vs NumPy model, 200 MNIST test digits | the model's answer for all 200 at each of 8 zoom levels from 0.75 to 3, with GPU and with software raster | all 200 at 6 zoom levels with GPU raster and 3 with software raster |
+| Firefox vs NumPy model | all 200 at device pixel ratios 1, 2, 3 and 4 | all 200 at 1 and 2 |
+| filter primitives | 620 | 643 |
+| render and read, Chromium GPU raster | 80–220 ms | 270–690 ms |
+| page size | about 800 kB, all inline except the Google Fonts stylesheet | |
+| time per painted cell | under 0.1 s in Chromium 156 on an Apple M4, GPU or software raster, and in Firefox 157 (`scripts/time_frames.py`, screenshot included) | |
+
+Logs: [`results/logs_agreement.txt`](results/logs_agreement.txt), [`results/logs_evaluate.txt`](results/logs_evaluate.txt),
+[`results/logs_conv.txt`](results/logs_conv.txt). Chromium's convolutions don't round exactly like the
+emulator, so a near-tie can still go either way.
+
+**The convolutional layer.** `feConvolveMatrix` is a convolution, so a weight-shared layer fits the
+filters directly: per channel one 5 × 5 convolution over the whole image, `feMorphology` for a 3 × 3
+max, a multiply by a tiled mask that keeps every other pixel, and an `feOffset` that interleaves the
+four 7 × 7 maps into one 14 × 14 image (channel k at (2i + k mod 2, 2j + ⌊k/2⌋)). The dense layers then
+read that image exactly as the perceptron's first layer reads the drawing. It was trained like the
+perceptron (same data, augmentation, schedule, and checkpoint on validation; its validation accuracy
+was higher too) and read the test sets once. Its size, 4 channels of 5 × 5, was set before training
+so the 196 pooled values fill one 14 × 14 image, not tuned. It isn't on the page, which keeps the frozen
+release model; it is slower with Chromium's GPU raster, probably because the 96 neurons that share
+its filter each compute the layer again (see Browser facts), which a filter of its own would avoid.
 
 **Real handwriting.** MNIST was written mostly by US Census staff and students, and its 9s and 1s are
 plain strokes. [UCI Pendigits](https://archive.ics.uci.edu/dataset/81) has 10,992 digits written with a
@@ -135,10 +168,35 @@ accuracy. They were settled while test accuracy was visible, so the figures may 
 That version reported 97.0 % and 95.0 %. The gap mixes the selection effect with 10,000 fewer training
 digits, and this run cannot separate the two.
 
-## Chromium facts it depends on
+## Browser facts it depends on
 
-Found with the probes in `scripts/probe/`, in headless Chromium with software raster unless GPU raster is named
-(`probe28.py`: Chromium 156, Apple M4):
+**All three engines.** `scripts/probe/subregion.py` reduces the difference that kept fenet in Chromium
+to one convolution with a one-pixel subregion. With `edgeMode="duplicate"`, Chromium, Firefox 157 and
+WebKit all treat the subregion as the edge of the input image and repeat its pixels. With
+`edgeMode="none"`, Firefox and WebKit read transparent black outside the subregion, while Chromium reads
+the real input there, which the old page depended on. The spec says the filter region clips a
+primitive's input and its subregion clips the result, which matches none of them for `duplicate`;
+w3c/fxtf-drafts#324 asks the question. `scripts/probe/upstream/` has two tentative web-platform-tests
+reftests for the Firefox/WebKit reading, and a draft issue.
+
+**Firefox** (157, in Playwright):
+
+- A filter of more than 256 primitives renders nothing.
+- SVG filters run in CSS pixels at every zoom level, and each filter's result is scaled to the screen.
+  At a whole-number device pixel ratio that is exact; at fractional ratios single pixels blur into
+  their neighbours between the nested filters, and the network misreads.
+- A stroke that starts on one cell and ends on another fires no `click`, so the `<label>` around the pad
+  doesn't check the radio; the example is hidden by a million-second `visibility` transition instead.
+- A convolution with an off-centre `targetX`/`targetY`, followed by a primitive that needs only part of
+  its result, read zeros for some input pixels it should have seen (seen while designing the centred
+  kernel, which avoids it; not reduced further).
+
+**WebKit** (Playwright's build 27.2) also clips `feMorphology`'s input to its subregion, and returns 13
+for a dark 10 through a 7 × 7 kernel, so fenet keeps showing Safari the recording. Its drawing isn't
+tested: with Playwright's mouse, WebKit painted only one cell of a drag.
+
+**Chromium.** Found with the probes in `scripts/probe/`, in headless Chromium with software raster
+unless GPU raster is named (`probe28.py`: Chromium 156, Apple M4):
 
 - `feConvolveMatrix` works in device pixels and ignores `kernelUnitLength`.
 - A kernel with more than 256 taps is ignored and the result is transparent. 196 fits. This stopped an
@@ -195,6 +253,7 @@ python -m scripts.record && python -m scripts.build_page    # site/fenet.gif; th
 python -m scripts.evaluate 10000                      # test: MNIST and Pendigits accuracy, emulator vs model
 python -m scripts.browser_check_mlp 200 1,1.25,2      # test: filter vs model in Chromium, by device pixel ratio
 python -m scripts.test_draw 1,1.5,2                   # a first visit: mouse strokes over the example, Clear, more digits
+ENGINE=firefox python -m scripts.test_draw 1,2        # the same in Firefox (ENGINE works for browser_check_mlp too)
 ```
 
 With these versions, training from scratch reproduces `model/mlp.npz` byte for byte (sha256
@@ -208,7 +267,18 @@ browsers do; `RASTER=sw` forces software raster.
 `site/test.html` is the standalone page; GitHub Pages builds and serves it with the recording
 (`.github/workflows/pages.yml`). `site/index.html` is the same page without a document skeleton, for
 hosts that add their own. `build_page` and `test_draw` run without MNIST. The probes run the same way:
-`python -m scripts.probe.probe21`.
+`python -m scripts.probe.probe21`, and `python -m scripts.probe.subregion` for the cross-engine one
+(`playwright install firefox webkit` first).
+
+The convolutional network (see Results) goes through the same steps with `MODEL=conv`, which reads
+`model/conv.npz` and `model/conv_alpha.json` and builds `site/conv.html`, a page for the checks only:
+
+```
+python -m scripts.train_conv 40 > results/train_conv.log
+MODEL=conv python -m scripts.check_mlp
+MODEL=conv python -m scripts.evaluate 10000
+MODEL=conv python -m scripts.build_page && MODEL=conv python -m scripts.browser_check_mlp 200 1,2
+```
 
 ## Files
 
@@ -217,11 +287,12 @@ hosts that add their own. `build_page` and `test_draw` run without MNIST. The pr
 | `fenet/` | the library the scripts share |
 | `fenet/train.py` | MNIST loading, 14 × 14 pooling, augmentation (and the earlier CNN attempt) |
 | `fenet/mlp.py` | the perceptron, its 8-bit forward pass, the 3 × 3 blur, thin-stroke augmentation |
+| `fenet/convnet.py` | the perceptron with a convolutional layer in front (compiled by `compile_mlp.conv_layer`) |
 | `fenet/pendigits.py` | Pendigits pen paths drawn onto the pad, its splits, augmentation |
 | `fenet/compile_mlp.py` | network → filter graph, NumPy emulator of the graph, SVG writer |
 | `fenet/layout.py`, `fenet/readout.py` | the readout's size and dot-matrix font; reading the answer off a screenshot |
 | `scripts/` | everything you run, in the order of [Rebuild](#rebuild) |
-| `scripts/train_mlp.py` | training: Pendigits in the batches, quantization-aware, checkpoint on validation |
+| `scripts/train_mlp.py`, `scripts/train_conv.py` | training: Pendigits in the batches, quantization-aware, checkpoint on validation |
 | `scripts/check_mlp.py`, `scripts/pick_sample.py` | score scale and opening example, from validation |
 | `scripts/build_page.py`, `site/template.html` | the page: drawing rules, ratio media queries, extract and render filters; markup and styles |
 | `scripts/diagram.py`, `site/prediction.svg` | one prediction, step by step, from the emulator; the page has the same panels inline |
@@ -230,7 +301,8 @@ hosts that add their own. `build_page` and `test_draw` run without MNIST. The pr
 | `scripts/browser_check_mlp.py`, `scripts/test_draw.py` | Chromium checks; `test_draw` draws as a first visitor would, straight over the example |
 | `scripts/eval_thin.py`, `scripts/compare_models.py`, `scripts/time_frames.py` | thin strokes and model against model on validation; frame cost |
 | `scripts/probe/` | the experiments behind the facts above, and screenshot helpers |
-| `model/` | `mlp.npz` (weights), `alpha.json` (score scale), `sample.json` (opening example), `facts.json` (figures quoted on the page) |
+| `scripts/probe/subregion.py`, `scripts/probe/upstream/` | the cross-engine convolution probe; web-platform-tests reftests and a draft spec issue |
+| `model/` | `mlp.npz` (weights), `alpha.json` (score scale), `sample.json` (opening example), `facts.json` (figures quoted on the page); `conv.npz`, `conv_alpha.json` |
 | `results/` | `train.log`, `logs_evaluate.txt` and `logs_agreement.txt`: the training run, the test evaluation and the Chromium agreement run |
 
 ## Limits
@@ -239,9 +311,9 @@ Besides the browsers, input and zoom levels under [Where it works](#where-it-wor
 
 - The zoom levels are a device pixel ratio of 1, the 65 ratios above 1 listed by `ratios()` in
   `scripts/build_page.py`, and ten common ratios below 1.
-- The browser check is by CSS feature: `-moz-appearance` (Firefox), `hanging-punctuation` (Safari) and
-  missing `:has()`. It was tested in Playwright's Chromium and WebKit; Firefox wouldn't start in the
-  test environment, so its branch is untested.
+- The browser check is by CSS feature: `-moz-appearance` (Firefox: no per-ratio scaling, a note at
+  fractional ratios), `hanging-punctuation` (Safari: the recording) and missing `:has()` (the
+  recording). Tested in Playwright's Chromium 156, Firefox 157 and WebKit 27.2, not on real devices.
 - Drawing only adds ink; Clear starts over.
 
 ## License

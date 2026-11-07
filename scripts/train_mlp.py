@@ -29,7 +29,7 @@ def batch(X, idx, r, aug):
     return np.stack([thin_augment(X[i], r) if r.random() < 0.4 else T.augment(X[i], r) for i in idx])
 
 
-def main():
+def main(make=MLP, default_out="model/mlp.npz"):
     (X, y), (Xv, yv), _ = T.load()
     r = np.random.default_rng(1)
     clean = blur(T.batch_grid(Xv, range(len(Xv)), r, aug=False)[:, 0])
@@ -39,9 +39,9 @@ def main():
     pen = PD.split("train")
     Gp, yp = PD.load("val")
     vals = [(clean, yv), (aug, yv), (thin, yv), (blur(Gp), yp)]
-    net = MLP()
+    net = make()
     epochs = int(sys.argv[1]) if len(sys.argv) > 1 else 30
-    out = sys.argv[2] if len(sys.argv) > 2 else "model/mlp.npz"
+    out = sys.argv[2] if len(sys.argv) > 2 else default_out
     B = 128
     best = 0
     for ep in range(epochs):

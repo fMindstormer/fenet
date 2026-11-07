@@ -1,1 +1,1 @@
-{"acc_clean": "96.7%", "acc_thin": "95.0%", "agree": "same answer as the NumPy model on all 1,600 test digits (200 at each of 8 zoom levels, GPU and software raster alike)", "acc_pen": "94.8%"}
+{"acc_clean": "96.7%", "acc_thin": "95.0%", "agree": "same answer as the NumPy model on all 1,600 test digits in Chromium (200 at each of 8 zoom levels, GPU and software raster alike) and all 800 in Firefox (200 at each of 4 zoom levels)", "acc_pen": "94.8%"}
