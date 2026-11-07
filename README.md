@@ -228,8 +228,10 @@ unless GPU raster is named (`probe28.py`: Chromium 156, Apple M4):
 
 ## Rebuild
 
-[Release v1.0.0](https://github.com/fMindstormer/fenet/releases/tag/v1.0.0) freezes the model and its
-evaluation: the weights, the score scale, the built page, the recording, the diagram and the logs.
+[Release v1.1.0](https://github.com/fMindstormer/fenet/releases/tag/v1.1.0) freezes the model and its
+evaluation: the weights, the score scale, the built page, the recording, the diagram and the logs, plus
+the convolutional network. It has the same model as
+[v1.0.0](https://github.com/fMindstormer/fenet/releases/tag/v1.0.0), whose page ran only in Chromium.
 
 Needs Python 3.13 with the exact versions in `requirements.txt` (`pip install -r requirements.txt`, then
 `playwright install chromium`). The data isn't in the repository:
